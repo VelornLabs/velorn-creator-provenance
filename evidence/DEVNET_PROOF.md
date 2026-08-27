@@ -47,7 +47,7 @@ npm run verify -- evidence/devnet-receipt.json \
   fixtures/sample-provenance-manifest.json
 ```
 
-The successful run used pinned `sas-lib@1.0.10` and `@solana/kit@5.5.1`. Before grant submission, this evidence should be tied to the exact first public Git commit containing the source and receipt.
+The successful run used pinned `sas-lib@1.0.10` and `@solana/kit@5.5.1`. The source, tests, and receipt from that run are preserved in implementation commit [`7c187f2566d54fc21b7e37d27ab11edfb19d17ab`](https://github.com/VelornLabs/velorn-creator-provenance/commit/7c187f2566d54fc21b7e37d27ab11edfb19d17ab).
 
 The narrow RPC evidence projection is stored in [`chain-metadata.json`](chain-metadata.json), and the independently repeated verifier output is preserved in [`verify-local.txt`](verify-local.txt). The raw fixture manifest file has SHA-256 `05dee66f2d1709664bdcb38b955472b4ad893753154f50f0a127a51b86d36b73`; that differs intentionally from the on-chain manifest commitment because the latter hashes the canonicalized JSON representation.
 
