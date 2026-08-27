@@ -1,16 +1,11 @@
+import { address, signature } from "@solana/kit";
+
+import type { MediaCommitment } from "./commitment.js";
 import {
-  COMMITMENT_VERSION,
-  STATEMENT_TYPE,
-  assertMediaCommitment,
-  canonicalizeJson,
-  sha256Hex,
-  type MediaCommitment,
-} from "./commitment.js";
-import {
-  DEVNET_CLUSTER,
-  assertPublicReceipt,
-  type PublicProvenanceReceipt,
-} from "./receipt.js";
+  canonicalizeContractJson,
+  sha256HexPortable,
+} from "./canonical-contract-runtime.js";
+import type { PublicProvenanceReceipt } from "./receipt.js";
 
 export const CONTRACT_VERSION = 1 as const;
 export const CREATOR_PROFILE_CONTRACT = "velorn.creator-profile" as const;
@@ -25,6 +20,15 @@ export const PROVENANCE_RECEIPT_CONTRACT =
 export const CREATOR_RELATIONSHIP_STATEMENT =
   "wallet_asserted_creator_relationship" as const;
 export const MAX_CONTRACT_JSON_BYTES = 64 * 1024;
+export const MAX_PUBLIC_PROFILE_URL_CHARACTERS = 2_048;
+
+const DEVNET_CLUSTER = "devnet" as const;
+const DEVNET_GENESIS_HASH =
+  "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG" as const;
+const SAS_PROGRAM_ID =
+  "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG" as const;
+const COMMITMENT_VERSION = 1 as const;
+const STATEMENT_TYPE = "creator_media_commitment_v1" as const;
 
 export interface CreatorProfileV1 {
   contract: typeof CREATOR_PROFILE_CONTRACT;
@@ -124,6 +128,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{11,127}$/;
 const MIME_TYPE_PATTERN =
   /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
+const POSITIVE_I64_MAX = 9_223_372_036_854_775_807n;
 const ISO_UTC_MILLISECONDS_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -137,6 +142,15 @@ function assertRecord(
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`${field} must be a plain JSON object`);
+  }
+}
+
+function assertObject(
+  value: unknown,
+  field: string,
+): asserts value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError(`${field} must be a JSON object`);
   }
 }
 
@@ -204,11 +218,13 @@ function assertPublicHttpsUrl(
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    value.length > 2_048 ||
+    value.length > MAX_PUBLIC_PROFILE_URL_CHARACTERS ||
     value !== value.trim() ||
     /[\u0000-\u001f\u007f]/u.test(value)
   ) {
-    throw new TypeError(`${field} must be a non-empty HTTPS URL`);
+    throw new TypeError(
+      `${field} must be a non-empty HTTPS URL of at most ${MAX_PUBLIC_PROFILE_URL_CHARACTERS} characters`,
+    );
   }
 
   let parsed: URL;
@@ -251,9 +267,23 @@ function assertSolanaAddress(
     typeof value !== "string" ||
     value.length < 32 ||
     value.length > 44 ||
-    !/^[1-9A-HJ-NP-Za-km-z]+$/.test(value)
+    !/^[1-9A-HJ-NP-Za-km-z]+$/u.test(value)
   ) {
     throw new TypeError(`${field} must be a base58 Solana address`);
+  }
+}
+
+function assertStrictSolanaAddress(
+  value: unknown,
+  field: string,
+): asserts value is string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a valid Solana address`);
+  }
+  try {
+    address(value);
+  } catch {
+    throw new TypeError(`${field} must be a valid Solana address`);
   }
 }
 
@@ -281,6 +311,247 @@ function assertMimeType(value: unknown, field: string): asserts value is string 
   ) {
     throw new TypeError(`${field} must be a lowercase MIME type without parameters`);
   }
+}
+
+function assertMediaCommitment(
+  value: unknown,
+): asserts value is MediaCommitment {
+  assertObject(value, "Commitment");
+  assertSha256(value.mediaSha256, "Commitment mediaSha256");
+  assertSha256(value.manifestSha256, "Commitment manifestSha256");
+  if (
+    value.statementType !== STATEMENT_TYPE ||
+    value.version !== COMMITMENT_VERSION
+  ) {
+    throw new TypeError("Commitment does not match the supported schema");
+  }
+}
+
+function assertStrictMediaCommitment(
+  value: unknown,
+): asserts value is MediaCommitment {
+  assertMediaCommitment(value);
+  assertRecord(value, "Commitment");
+  assertExactKeys(
+    value,
+    ["mediaSha256", "manifestSha256", "statementType", "version"],
+    [],
+    "Commitment",
+  );
+}
+
+function assertNonEmptyString(
+  value: unknown,
+  field: string,
+): asserts value is string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+}
+
+function devnetAccountUrl(value: string): string {
+  return `https://explorer.solana.com/address/${encodeURIComponent(value)}?cluster=devnet`;
+}
+
+function devnetTransactionUrl(value: string): string {
+  return `https://explorer.solana.com/tx/${encodeURIComponent(value)}?cluster=devnet`;
+}
+
+function assertTransactionEvidence(value: unknown, field: string): void {
+  assertObject(value, field);
+  assertNonEmptyString(value.signature, `${field} signature`);
+  assertNonEmptyString(value.explorerUrl, `${field} explorerUrl`);
+  if (value.explorerUrl !== devnetTransactionUrl(value.signature)) {
+    throw new TypeError(`${field} Explorer URL does not match its signature`);
+  }
+}
+
+function assertStrictTransactionEvidence(value: unknown, field: string): void {
+  assertTransactionEvidence(value, field);
+  assertRecord(value, field);
+  assertExactKeys(value, ["signature", "explorerUrl"], [], field);
+  assertNonEmptyString(value.signature, `${field} signature`);
+  assertNonEmptyString(value.explorerUrl, `${field} explorerUrl`);
+  try {
+    signature(value.signature);
+  } catch {
+    throw new TypeError(`${field} signature must be a valid Solana signature`);
+  }
+  if (value.explorerUrl !== devnetTransactionUrl(value.signature)) {
+    throw new TypeError(`${field} Explorer URL does not match its signature`);
+  }
+}
+
+/**
+ * Browser-neutral structural validation for the public receipt nested in the
+ * canonical share contract. Live account ownership and relationship checks are
+ * intentionally a separate verifier responsibility.
+ */
+function assertPublicReceiptContract(
+  value: unknown,
+): asserts value is PublicProvenanceReceipt {
+  assertObject(value, "Public chain receipt");
+  if (
+    value.receiptVersion !== 1 ||
+    value.network !== DEVNET_CLUSTER ||
+    value.genesisHash !== DEVNET_GENESIS_HASH ||
+    value.sasProgramId !== SAS_PROGRAM_ID
+  ) {
+    throw new TypeError("Public chain receipt uses an unsupported version or network");
+  }
+
+  for (const field of [
+    "credentialName",
+    "schemaName",
+    "credentialAuthority",
+    "authorizedSigner",
+    "subjectNonce",
+  ] as const) {
+    assertNonEmptyString(value[field], `Public chain receipt ${field}`);
+  }
+  const credentialAddress = value.credentialAddress;
+  const schemaAddress = value.schemaAddress;
+  const attestationAddress = value.attestationAddress;
+  const expiryUnixSeconds = value.expiryUnixSeconds;
+  const receiptWrittenAt = value.receiptWrittenAt;
+  assertNonEmptyString(credentialAddress, "Public chain receipt credentialAddress");
+  assertNonEmptyString(schemaAddress, "Public chain receipt schemaAddress");
+  assertNonEmptyString(attestationAddress, "Public chain receipt attestationAddress");
+  assertNonEmptyString(expiryUnixSeconds, "Public chain receipt expiryUnixSeconds");
+  assertNonEmptyString(receiptWrittenAt, "Public chain receipt receiptWrittenAt");
+  if (!/^\d+$/u.test(expiryUnixSeconds)) {
+    throw new TypeError("Public chain receipt expiryUnixSeconds must be unsigned");
+  }
+  if (Number.isNaN(Date.parse(receiptWrittenAt))) {
+    throw new TypeError("Public chain receipt receiptWrittenAt must be a date-time");
+  }
+  assertMediaCommitment(value.commitment);
+
+  assertObject(value.accountExplorerUrls, "Public chain account Explorer URLs");
+  for (const field of ["credential", "schema", "attestation"] as const) {
+    assertNonEmptyString(
+      value.accountExplorerUrls[field],
+      `Public chain account Explorer URLs ${field}`,
+    );
+  }
+  if (
+    value.accountExplorerUrls.credential !==
+      devnetAccountUrl(credentialAddress) ||
+    value.accountExplorerUrls.schema !== devnetAccountUrl(schemaAddress) ||
+    value.accountExplorerUrls.attestation !==
+      devnetAccountUrl(attestationAddress)
+  ) {
+    throw new TypeError(
+      "Public chain receipt account Explorer URLs do not match their addresses",
+    );
+  }
+
+  assertObject(value.transactions, "Public chain receipt transactions");
+  assertTransactionEvidence(
+    value.transactions.createCredential,
+    "Create credential transaction",
+  );
+  assertTransactionEvidence(
+    value.transactions.createSchema,
+    "Create schema transaction",
+  );
+  assertTransactionEvidence(
+    value.transactions.createAttestation,
+    "Create attestation transaction",
+  );
+
+  assertObject(value.implementation, "Public chain receipt implementation");
+  assertNonEmptyString(value.implementation.sasLib, "Implementation sasLib");
+  assertNonEmptyString(value.implementation.solanaKit, "Implementation solanaKit");
+}
+
+function assertStrictPublicReceiptContract(
+  value: unknown,
+): asserts value is PublicProvenanceReceipt {
+  assertPublicReceiptContract(value);
+  assertRecord(value, "Public chain receipt");
+  assertExactKeys(
+    value,
+    [
+      "receiptVersion",
+      "network",
+      "genesisHash",
+      "sasProgramId",
+      "credentialName",
+      "schemaName",
+      "credentialAddress",
+      "schemaAddress",
+      "attestationAddress",
+      "credentialAuthority",
+      "authorizedSigner",
+      "subjectNonce",
+      "commitment",
+      "expiryUnixSeconds",
+      "accountExplorerUrls",
+      "transactions",
+      "receiptWrittenAt",
+      "implementation",
+    ],
+    [],
+    "Public chain receipt",
+  );
+  for (const field of [
+    "credentialAddress",
+    "schemaAddress",
+    "attestationAddress",
+    "credentialAuthority",
+    "authorizedSigner",
+    "subjectNonce",
+  ] as const) {
+    assertStrictSolanaAddress(value[field], `Public chain receipt ${field}`);
+  }
+  if (
+    !/^[1-9]\d{0,18}$/u.test(value.expiryUnixSeconds) ||
+    BigInt(value.expiryUnixSeconds) > POSITIVE_I64_MAX
+  ) {
+    throw new TypeError(
+      "Public chain receipt expiryUnixSeconds must be a canonical positive signed 64-bit integer",
+    );
+  }
+  assertIsoUtcMilliseconds(
+    value.receiptWrittenAt,
+    "Public chain receipt receiptWrittenAt",
+  );
+  assertStrictMediaCommitment(value.commitment);
+
+  assertRecord(value.accountExplorerUrls, "Public chain account Explorer URLs");
+  assertExactKeys(
+    value.accountExplorerUrls,
+    ["credential", "schema", "attestation"],
+    [],
+    "Public chain account Explorer URLs",
+  );
+  assertRecord(value.transactions, "Public chain receipt transactions");
+  assertExactKeys(
+    value.transactions,
+    ["createCredential", "createSchema", "createAttestation"],
+    [],
+    "Public chain receipt transactions",
+  );
+  assertStrictTransactionEvidence(
+    value.transactions.createCredential,
+    "Create credential transaction",
+  );
+  assertStrictTransactionEvidence(
+    value.transactions.createSchema,
+    "Create schema transaction",
+  );
+  assertStrictTransactionEvidence(
+    value.transactions.createAttestation,
+    "Create attestation transaction",
+  );
+  assertRecord(value.implementation, "Public chain receipt implementation");
+  assertExactKeys(
+    value.implementation,
+    ["sasLib", "solanaKit"],
+    [],
+    "Public chain receipt implementation",
+  );
 }
 
 function equalCommitments(left: MediaCommitment, right: MediaCommitment): boolean {
@@ -456,10 +727,31 @@ export function assertProvenanceRequest(
   if (value.commitment.mediaSha256 !== value.media.sha256) {
     throw new TypeError("Provenance request media hash does not match its commitment");
   }
-  const manifestSha256 = sha256Hex(canonicalizeJson(value.manifest));
+  const manifestSha256 = sha256HexPortable(
+    canonicalizeContractJson(value.manifest),
+  );
   if (value.commitment.manifestSha256 !== manifestSha256) {
     throw new TypeError(
       "Provenance request manifest hash does not match its commitment",
+    );
+  }
+}
+
+function assertStrictProvenanceRequest(
+  value: unknown,
+): asserts value is ProvenanceRequestV1 {
+  assertProvenanceRequest(value);
+  assertStrictMediaCommitment(value.commitment);
+  const lifecycle = value.manifest.lifecycle;
+  if (lifecycle.action === "supersede") {
+    assertStrictSolanaAddress(
+      lifecycle.previousAttestationAddress,
+      "Supersede previousAttestationAddress",
+    );
+  } else if (lifecycle.action === "revoke") {
+    assertStrictSolanaAddress(
+      lifecycle.targetAttestationAddress,
+      "Revoke targetAttestationAddress",
     );
   }
 }
@@ -480,7 +772,7 @@ export function assertShareableProvenanceReceipt(
     "Shareable provenance receipt",
   );
   assertProvenanceRequest(value.request);
-  assertPublicReceipt(value.chainReceipt);
+  assertPublicReceiptContract(value.chainReceipt);
   if (value.request.network !== value.chainReceipt.network) {
     throw new TypeError("Shareable receipt request and chain networks do not match");
   }
@@ -491,6 +783,14 @@ export function assertShareableProvenanceReceipt(
   }
 }
 
+function assertStrictShareableProvenanceReceipt(
+  value: unknown,
+): asserts value is ShareableProvenanceReceiptV1 {
+  assertShareableProvenanceReceipt(value);
+  assertStrictProvenanceRequest(value.request);
+  assertStrictPublicReceiptContract(value.chainReceipt);
+}
+
 export function createProvenanceRequest(
   input: CreateProvenanceRequestInput,
 ): ProvenanceRequestV1 {
@@ -499,7 +799,7 @@ export function createProvenanceRequest(
   };
   const commitment: MediaCommitment = {
     mediaSha256: input.mediaSha256,
-    manifestSha256: sha256Hex(canonicalizeJson(input.manifest)),
+    manifestSha256: sha256HexPortable(canonicalizeContractJson(input.manifest)),
     statementType: STATEMENT_TYPE,
     version: COMMITMENT_VERSION,
   };
@@ -545,7 +845,7 @@ function parseJson(text: string, field: string): unknown {
 }
 
 function serializeJson(value: unknown, field: string): string {
-  const encoded = canonicalizeJson(value);
+  const encoded = canonicalizeContractJson(value);
   if (new TextEncoder().encode(encoded).byteLength > MAX_CONTRACT_JSON_BYTES) {
     throw new TypeError(`${field} JSON exceeds ${MAX_CONTRACT_JSON_BYTES} bytes`);
   }
@@ -586,6 +886,68 @@ export function parseShareableProvenanceReceiptJson(
   const parsed = parseJson(text, "Shareable provenance receipt");
   assertShareableProvenanceReceipt(parsed);
   return parsed;
+}
+
+function assertCanonicalJsonEncoding(
+  text: string,
+  value: unknown,
+  field: string,
+): void {
+  if (text !== canonicalizeContractJson(value)) {
+    throw new TypeError(`${field} must use canonical contract JSON`);
+  }
+}
+
+/**
+ * Parses the stricter wire representation used for wallet handoffs and public
+ * share links. The ordinary v1 parser above intentionally remains compatible
+ * with previously valid JSON that has insignificant whitespace/key ordering or
+ * legacy-permitted nested receipt/commitment properties; it is not the public
+ * wire trust boundary.
+ */
+export function parseCanonicalProvenanceRequestJson(
+  text: string,
+): ProvenanceRequestV1 {
+  const parsed = parseProvenanceRequestJson(text);
+  assertStrictProvenanceRequest(parsed);
+  assertCanonicalJsonEncoding(text, parsed, "Provenance request JSON");
+  return parsed;
+}
+
+/** See parseCanonicalProvenanceRequestJson for the compatibility boundary. */
+export function parseCanonicalShareableProvenanceReceiptJson(
+  text: string,
+): ShareableProvenanceReceiptV1 {
+  const parsed = parseShareableProvenanceReceiptJson(text);
+  assertStrictShareableProvenanceReceipt(parsed);
+  assertCanonicalJsonEncoding(
+    text,
+    parsed,
+    "Shareable provenance receipt JSON",
+  );
+  return parsed;
+}
+
+/**
+ * Serializes and validates the exact request representation accepted by public
+ * wallet handoffs and sponsor policy. Use the compatibility serializer below
+ * only when preserving the broader published-v1 parsing envelope is required.
+ */
+export function serializeCanonicalProvenanceRequestJson(
+  value: ProvenanceRequestV1,
+): string {
+  const encoded = serializeJson(value, "Provenance request");
+  parseCanonicalProvenanceRequestJson(encoded);
+  return encoded;
+}
+
+/** Serializes the exact receipt representation accepted by public share links. */
+export function serializeCanonicalShareableProvenanceReceiptJson(
+  value: ShareableProvenanceReceiptV1,
+): string {
+  const encoded = serializeJson(value, "Shareable provenance receipt");
+  parseCanonicalShareableProvenanceReceiptJson(encoded);
+  return encoded;
 }
 
 export function serializeCreatorProfileJson(value: CreatorProfileV1): string {

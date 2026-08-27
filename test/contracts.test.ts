@@ -17,10 +17,14 @@ import {
   assertShareableProvenanceReceipt,
   parseCreatorProvenanceManifestJson,
   parseCreatorProfileJson,
+  parseCanonicalProvenanceRequestJson,
+  parseCanonicalShareableProvenanceReceiptJson,
   parseProvenanceLifecycleJson,
   parseProvenanceRequestJson,
   parseShareableProvenanceReceiptJson,
   serializeCreatorProfileJson,
+  serializeCanonicalProvenanceRequestJson,
+  serializeCanonicalShareableProvenanceReceiptJson,
   serializeCreatorProvenanceManifestJson,
   serializeProvenanceLifecycleJson,
   serializeProvenanceRequestJson,
@@ -42,6 +46,12 @@ const PREVIOUS_ATTESTATION =
   "7hVnZugMdwhdJ8P6KGAF76VMoShCEtZsmcUTL8MuVfYb";
 const TARGET_ATTESTATION =
   "3weC5nuqPeEE7DbGC5hdBRpeUjAaKoLu9hSsddySyHy5";
+const CREDENTIAL_ADDRESS =
+  "4dJQoSmBoAWQX1HRzz6UQbrqB6BGdwSzFPN5haQB2xxD";
+const CREATOR_ADDRESS = "UzbSgkgFy6z99U4uXWhTyaCkY2jsfwfmbyQpETkk5aR";
+const SUBJECT_NONCE = "9JWH8mSgs97njH8hWGJ8uJU7L9YuwaDZBeW9PzwsAkwN";
+const PUBLIC_SIGNATURE =
+  "3sMCHShM8utNQawse9AErnwReQBArwzEKeQcfC99Ysz6CTiGsozE3ub6zPRhjStpPqXLQm5FATkpKzRy8fG25v3M";
 
 function fixtureProfile(): CreatorProfileV1 {
   return {
@@ -84,7 +94,7 @@ function fixtureRequest(): ProvenanceRequestV1 {
 function fixtureChainReceipt(
   request: ProvenanceRequestV1 = fixtureRequest(),
 ): PublicProvenanceReceipt {
-  const signature = "public-signature";
+  const signature = PUBLIC_SIGNATURE;
   return {
     receiptVersion: 1,
     network: DEVNET_CLUSTER,
@@ -92,18 +102,18 @@ function fixtureChainReceipt(
     sasProgramId: SAS_PROGRAM_ID,
     credentialName: "VELORN-PROV-FIXTURE",
     schemaName: "MEDIA-COMMITMENT",
-    credentialAddress: "credential",
-    schemaAddress: "schema",
-    attestationAddress: "attestation",
-    credentialAuthority: "authority",
-    authorizedSigner: "signer",
-    subjectNonce: "subject",
+    credentialAddress: CREDENTIAL_ADDRESS,
+    schemaAddress: TARGET_ATTESTATION,
+    attestationAddress: PREVIOUS_ATTESTATION,
+    credentialAuthority: CREATOR_ADDRESS,
+    authorizedSigner: CREATOR_ADDRESS,
+    subjectNonce: SUBJECT_NONCE,
     commitment: request.commitment,
     expiryUnixSeconds: "2000000000",
     accountExplorerUrls: {
-      credential: devnetAccountUrl("credential"),
-      schema: devnetAccountUrl("schema"),
-      attestation: devnetAccountUrl("attestation"),
+      credential: devnetAccountUrl(CREDENTIAL_ADDRESS),
+      schema: devnetAccountUrl(TARGET_ATTESTATION),
+      attestation: devnetAccountUrl(PREVIOUS_ATTESTATION),
     },
     transactions: {
       createCredential: {
@@ -328,15 +338,155 @@ test("contract parsers reject invalid and oversized JSON before use", () => {
   );
 
   const request = fixtureRequest();
+  const oversized = createShareableProvenanceReceipt(request, {
+    ...fixtureChainReceipt(request),
+    credentialName: "x".repeat(MAX_CONTRACT_JSON_BYTES),
+  });
+  assert.throws(
+    () => serializeShareableProvenanceReceiptJson(oversized),
+    /exceeds/,
+  );
+});
+
+test("strict wire parsers reject non-canonical JSON without narrowing v1 parsers", () => {
+  const request = fixtureRequest();
+  const canonicalRequest = serializeProvenanceRequestJson(request);
+  assert.equal(
+    serializeCanonicalProvenanceRequestJson(request),
+    canonicalRequest,
+  );
+  const reorderedRequest = JSON.stringify(request);
+  assert.notEqual(reorderedRequest, canonicalRequest);
+
+  for (const json of [reorderedRequest, `${canonicalRequest} `]) {
+    assert.deepEqual(parseProvenanceRequestJson(json), request);
+    assert.throws(
+      () => parseCanonicalProvenanceRequestJson(json),
+      /canonical contract JSON/u,
+    );
+  }
+
+  const duplicateRequest = canonicalRequest.replace(
+    "{\"commitment\"",
+    `{\"contract\":\"${request.contract}\",\"commitment\"`,
+  );
+  assert.deepEqual(parseProvenanceRequestJson(duplicateRequest), request);
+  assert.throws(
+    () => parseCanonicalProvenanceRequestJson(duplicateRequest),
+    /canonical contract JSON/u,
+  );
+
   const receipt = createShareableProvenanceReceipt(
     request,
-    {
-      ...fixtureChainReceipt(request),
-      credentialName: "x".repeat(MAX_CONTRACT_JSON_BYTES),
+    fixtureChainReceipt(request),
+  );
+  const canonicalReceipt = serializeShareableProvenanceReceiptJson(receipt);
+  assert.equal(
+    serializeCanonicalShareableProvenanceReceiptJson(receipt),
+    canonicalReceipt,
+  );
+  const reorderedReceipt = JSON.stringify(receipt);
+  assert.notEqual(reorderedReceipt, canonicalReceipt);
+  const duplicateReceipt = canonicalReceipt.replace(
+    "{\"chainReceipt\"",
+    `{\"contract\":\"${receipt.contract}\",\"chainReceipt\"`,
+  );
+  for (const json of [
+    reorderedReceipt,
+    `${canonicalReceipt} `,
+    duplicateReceipt,
+  ]) {
+    assert.deepEqual(parseShareableProvenanceReceiptJson(json), receipt);
+    assert.throws(
+      () => parseCanonicalShareableProvenanceReceiptJson(json),
+      /canonical contract JSON/u,
+    );
+  }
+});
+
+test("strict receipt wire rules require canonical i64 expiry and ISO time", () => {
+  const request = fixtureRequest();
+  const base = createShareableProvenanceReceipt(
+    request,
+    fixtureChainReceipt(request),
+  );
+
+  for (const expiryUnixSeconds of [
+    "0",
+    "0001",
+    "9223372036854775808",
+  ]) {
+    const receipt = {
+      ...base,
+      chainReceipt: { ...base.chainReceipt, expiryUnixSeconds },
+    };
+    const json = serializeShareableProvenanceReceiptJson(receipt);
+    assert.deepEqual(parseShareableProvenanceReceiptJson(json), receipt);
+    assert.throws(
+      () => serializeCanonicalShareableProvenanceReceiptJson(receipt),
+      /canonical positive signed 64-bit integer/u,
+    );
+    assert.throws(
+      () => parseCanonicalShareableProvenanceReceiptJson(json),
+      /canonical positive signed 64-bit integer/u,
+    );
+  }
+
+  const nonCanonicalTime = {
+    ...base,
+    chainReceipt: {
+      ...base.chainReceipt,
+      receiptWrittenAt: "2026-08-28T00:01:00Z",
     },
+  };
+  const nonCanonicalTimeJson =
+    serializeShareableProvenanceReceiptJson(nonCanonicalTime);
+  assert.deepEqual(
+    parseShareableProvenanceReceiptJson(nonCanonicalTimeJson),
+    nonCanonicalTime,
   );
   assert.throws(
-    () => serializeShareableProvenanceReceiptJson(receipt),
-    /exceeds/,
+    () =>
+      serializeCanonicalShareableProvenanceReceiptJson(nonCanonicalTime),
+    /canonical UTC ISO date-time/u,
+  );
+  assert.throws(
+    () => parseCanonicalShareableProvenanceReceiptJson(nonCanonicalTimeJson),
+    /canonical UTC ISO date-time/u,
+  );
+
+  const maximum = {
+    ...base,
+    chainReceipt: {
+      ...base.chainReceipt,
+      expiryUnixSeconds: "9223372036854775807",
+    },
+  };
+  const maximumJson = serializeShareableProvenanceReceiptJson(maximum);
+  assert.equal(
+    serializeCanonicalShareableProvenanceReceiptJson(maximum),
+    maximumJson,
+  );
+  assert.deepEqual(
+    parseCanonicalShareableProvenanceReceiptJson(maximumJson),
+    maximum,
+  );
+});
+
+test("strict request wire parser rejects legacy-permissive commitment extras", () => {
+  const request = fixtureRequest();
+  const withExtra = {
+    ...request,
+    commitment: { ...request.commitment, prompt: "must not cross the wire" },
+  } as ProvenanceRequestV1;
+  const json = serializeProvenanceRequestJson(withExtra);
+  assert.deepEqual(parseProvenanceRequestJson(json), withExtra);
+  assert.throws(
+    () => serializeCanonicalProvenanceRequestJson(withExtra),
+    /unsupported property prompt/u,
+  );
+  assert.throws(
+    () => parseCanonicalProvenanceRequestJson(json),
+    /unsupported property prompt/u,
   );
 });

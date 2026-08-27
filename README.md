@@ -20,7 +20,8 @@ The on-chain record proves that a particular Solana signer made a commitment to 
 
 ## Safety and privacy
 
-- Media and manifest contents remain local; only SHA-256 hashes and a short statement identifier go on-chain.
+- Media bytes remain local in the browser and are never placed in a provenance link. Only the compact SHA-256 commitments, statement identifier, and schema version are written into the SAS attestation.
+- The `#issue/v1` and `#verify/v1` links intentionally contain opted-in public manifest metadata, lifecycle data, creator profile URLs, and receipt evidence. Sharing one sends those fields to the recipient, and browser or clipboard history may retain the link; URL encoding is not encryption.
 - The default Devnet attempt creates disposable in-memory keypairs. The optional reusable-wallet command stores one **Devnet-only** seed in the ignored `.local/` directory with mode `0600`; neither path prints the secret or includes it in a receipt.
 - Do not use a real wallet or real funds with this proof of concept.
 - `artifacts/` is ignored because receipts are run-specific. A receipt contains public information only.
@@ -39,10 +40,60 @@ The proposed standard grant would fund only that reusable open-source public-goo
 
 ## Requirements
 
-- Node.js 22 or later
-- Network access to Solana Devnet
+- Node.js 22.12 or later
+- Network access to Solana Devnet for the CLI issuance/verifier flow
 
-The Solana CLI and Rust toolchain are not required for this TypeScript Devnet flow.
+The static browser preview does not require Solana network access after its
+dependencies are installed. The Solana CLI and Rust toolchain are not required
+for the TypeScript Devnet flow.
+
+## Browser preview
+
+The first Eternal sprint browser slice has a static `#issue/v1` request
+preview, a strict `#verify/v1` link parser, and incremental local-file SHA-256
+checking:
+
+```bash
+npm run dev:web
+```
+
+The preview does not yet connect a wallet, contact an RPC endpoint, or issue an
+attestation. It has no upload path or analytics; selected files are read in
+bounded chunks and remain on the device. Build the deployable static files with
+`npm run build:web`.
+
+The home page includes deterministic synthetic links for both routes, so a
+reviewer can exercise the UI without constructing a payload. Those links use
+placeholder accounts and signatures and are **not chain evidence**. Select
+`fixtures/sample-export.txt` in either sample route to see the expected local
+hash match; changing one byte produces a mismatch.
+
+## Public-wire contract boundary
+
+The ordinary v1 parse/serialize functions preserve the broader published v1
+compatibility envelope, including insignificant JSON formatting differences and
+some historically permitted nested properties. They are not the public-wire
+trust boundary. New wallet handoffs and share links use
+`serializeCanonicalProvenanceRequestJson`,
+`serializeCanonicalShareableProvenanceReceiptJson`, and their matching strict
+canonical parsers. Fragment transport has its own 6,000-byte cap, independent
+of the general 64 KiB v1 JSON limit.
+
+## Creator-first sponsorship reference
+
+`src/sponsor-policy.ts` is an offline creator-first/sponsor-last policy core.
+Stage one returns a canonical transaction with both signature slots empty. The
+creator approves those exact bytes first; only after strict validation, pinned
+Devnet revalidation, and atomic exact-cost reservation may a server-only sponsor
+fill its slot. Final signed wire remains server-side for a separate broadcast
+worker and is never returned by the public service result.
+
+This repository does not yet contain the production HTTP service, Wallet
+Standard UI, pinned RPC adapter, durable transactional store, broadcast worker,
+authentication/rate limits, provisional-plan cleanup, or reconciliation
+workers. The included in-memory store is an offline state-machine reference,
+not a deployable sponsorship backend. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete boundary.
 
 ## Run locally
 
@@ -83,4 +134,4 @@ npm run devnet
 
 ## License
 
-Apache-2.0. The package is marked `private` only to prevent accidental npm publication during Phase 0; the source remains licensed for reuse. The Velorn name and logo are not licensed for uses that imply affiliation or endorsement; see `NOTICE`.
+Apache-2.0. The package is marked `private` to prevent accidental npm publication during the PoC; the source remains licensed for reuse. The Velorn name and logo are not licensed for uses that imply affiliation or endorsement; see `NOTICE`.

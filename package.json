@@ -6,11 +6,15 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:web": "npm run typecheck:web && vite build --config vite.config.ts",
+    "dev:web": "vite --config vite.config.ts",
+    "preview:web": "vite preview --config vite.config.ts",
     "test": "tsx --test test/*.test.ts",
+    "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "prepare:devnet-wallet": "tsx src/prepare-devnet-wallet.ts",
     "devnet": "tsx src/devnet-demo.ts",
     "verify": "tsx src/verify-receipt.ts"
@@ -18,11 +22,13 @@
   "dependencies": {
     "@solana-program/compute-budget": "0.11.0",
     "@solana/kit": "5.5.1",
+    "hash-wasm": "4.12.0",
     "sas-lib": "1.0.10"
   },
   "devDependencies": {
     "@types/node": "24.0.4",
     "tsx": "4.20.6",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "vite": "8.2.2"
   }
 }

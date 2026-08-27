@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: sha256sum -c evidence/SHA256SUMS
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm run build:web

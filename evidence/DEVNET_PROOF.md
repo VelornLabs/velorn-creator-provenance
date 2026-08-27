@@ -47,7 +47,25 @@ npm run verify -- evidence/devnet-receipt.json \
   fixtures/sample-provenance-manifest.json
 ```
 
-The successful run used pinned `sas-lib@1.0.10` and `@solana/kit@5.5.1`. The source, tests, and receipt from that run are preserved in implementation commit [`7c187f2566d54fc21b7e37d27ab11edfb19d17ab`](https://github.com/VelornLabs/velorn-creator-provenance/commit/7c187f2566d54fc21b7e37d27ab11edfb19d17ab).
+The successful run used pinned `sas-lib@1.0.10` and `@solana/kit@5.5.1`. The source, tests, dependency files, and receipt from that run are associated with implementation commit [`7c187f2566d54fc21b7e37d27ab11edfb19d17ab`](https://github.com/VelornLabs/velorn-creator-provenance/commit/7c187f2566d54fc21b7e37d27ab11edfb19d17ab).
+
+The root dependency-file hashes at that historical implementation commit were:
+
+- `package.json`: `432faba7e0a20f3ac804081ded6883ead552ee043dab6167cf8a4cf8220ce29c`
+- `package-lock.json`: `8e9d692eb99a6cdb3d25575e9e0539777ba8b0006105ba6b834527aafefdd9ef`
+
+Those two hashes identify files in commit `7c187f2566d54fc21b7e37d27ab11edfb19d17ab`; they are not hashes of the evolving root dependency files on the current sprint branch. They can be checked without replacing the current files:
+
+```bash
+git show 7c187f2566d54fc21b7e37d27ab11edfb19d17ab:package.json | sha256sum
+git show 7c187f2566d54fc21b7e37d27ab11edfb19d17ab:package-lock.json | sha256sum
+```
+
+The active checksum manifest intentionally covers only the immutable proof and synthetic fixture artifacts, so it remains valid as source dependencies evolve:
+
+```bash
+sha256sum -c evidence/SHA256SUMS
+```
 
 The narrow RPC evidence projection is stored in [`chain-metadata.json`](chain-metadata.json), and the independently repeated verifier output is preserved in [`verify-local.txt`](verify-local.txt). The raw fixture manifest file has SHA-256 `05dee66f2d1709664bdcb38b955472b4ad893753154f50f0a127a51b86d36b73`; that differs intentionally from the on-chain manifest commitment because the latter hashes the canonicalized JSON representation.
 
