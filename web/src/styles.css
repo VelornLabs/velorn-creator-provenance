@@ -240,6 +240,67 @@ h2 {
   box-shadow: 0 22px 60px rgb(0 0 0 / 20%);
 }
 
+.wallet-panel {
+  border-color: #4b3d34;
+}
+
+.wallet-status {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 16px 17px;
+  border: 1px solid #41372f;
+  border-radius: 11px;
+  overflow-wrap: anywhere;
+  color: #bbb0a5;
+  background: #151210;
+  line-height: 1.5;
+}
+
+.wallet-status strong {
+  color: #e7dbd0;
+}
+
+.wallet-status.wallet-error {
+  border-color: #79443d;
+  color: #efb7ad;
+  background: #291715;
+}
+
+.wallet-address {
+  color: #e2a575;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.wallet-safe-copy {
+  color: #9fb99a;
+  font-size: 13px;
+}
+
+.wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.wallet-button {
+  padding: 10px 13px;
+  border: 1px solid #72503a;
+  border-radius: 9px;
+  color: #f0c39e;
+  background: #21160f;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.wallet-button:hover,
+.wallet-button:focus-visible {
+  border-color: #d2915e;
+  background: #2a1c13;
+}
+
 .route-card {
   min-height: 220px;
   padding: 26px;

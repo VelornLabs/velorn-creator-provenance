@@ -44,3 +44,37 @@ test("home route describes the full public request and receipt payloads", () => 
     /reveals the exact hashes and network that would become public/u,
   );
 });
+
+test("wallet readiness copy promises connection only, never signing or spending", () => {
+  const walletPanel = sourceSection(
+    "function walletReadinessPanel",
+    "function offlineDemoNotice",
+  );
+  assert.match(walletPanel, /optional check/u);
+  assert.match(walletPanel, /automatically detects/u);
+  assert.match(walletPanel, /authorize a Devnet-compatible public account/u);
+  assert.match(walletPanel, /does not transmit that address/u);
+  assert.match(walletPanel, /call a Solana RPC/u);
+  assert.match(walletPanel, /request a signature/u);
+  assert.match(walletPanel, /prepare or send a transaction/u);
+  assert.match(walletPanel, /spend anything/u);
+  assert.match(walletPanel, /wallet extension follows its own privacy/u);
+  assert.match(walletPanel, /Cancel local connection attempt/u);
+  assert.match(walletPanel, /Clear local connection/u);
+});
+
+test("the home route mounts and disposes the optional wallet readiness check", () => {
+  const home = sourceSection("function renderHome", "function definitionRow");
+  assert.match(home, /walletReadinessPanel\(pageSignal\)/u);
+  assert.match(mainSource, /pageSignal\.addEventListener\("abort", dispose/u);
+  assert.match(
+    mainSource,
+    /actions\.replaceChildren\(\);\s+status\.replaceChildren\(\);/u,
+  );
+});
+
+test("issue copy scopes wallet discovery claims to the issue route", () => {
+  const issue = sourceSection("function renderIssue", "function renderVerify");
+  assert.match(issue, /This issue page does not show the wallet readiness panel/u);
+  assert.doesNotMatch(issue, /browser slice does not discover a wallet/u);
+});

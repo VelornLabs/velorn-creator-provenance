@@ -11,6 +11,10 @@ import {
   type IssueFragmentV1,
   type VerifyFragmentV1,
 } from "./fragment-contract.js";
+import {
+  DevnetWalletConnection,
+  type DevnetWalletSnapshot,
+} from "./wallet-standard.js";
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 if (!rootElement) throw new Error("App root is missing");
@@ -95,11 +99,194 @@ function privacyNotice(): HTMLElement {
   copy.append(
     createElement("strong", { text: "Local means local" }),
     createElement("p", {
-      text: "Selected files are hashed in this browser. This preview has no upload, analytics, wallet connection, RPC connection, or server API. Opening a clearly labeled Explorer link is an explicit navigation to explorer.solana.com.",
+      text: "Selected files are hashed in this browser. This preview has no upload, analytics, RPC connection, or server API. On the home page it locally checks the Wallet Standard registry for compatible extension metadata; account authorization still requires an explicit click. Opening a clearly labeled Explorer link is an explicit navigation to explorer.solana.com.",
     }),
   );
   notice.append(icon, copy);
   return notice;
+}
+
+function shortAddress(value: string): string {
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 8)}…${value.slice(-8)}`;
+}
+
+function walletInvalidationCopy(
+  snapshot: DevnetWalletSnapshot,
+): string | undefined {
+  if (snapshot.invalidation === "wallet-change") {
+    return "The wallet changed its accounts or capabilities, so this page cleared the connection. Connect again to continue safely.";
+  }
+  if (snapshot.invalidation === "wallet-unregistered") {
+    return "The wallet extension is no longer available, so this page cleared the connection.";
+  }
+  if (snapshot.invalidation === "explicit-disconnect") {
+    return "This page cleared its local wallet selection. The extension may retain site authorization; manage that separately inside the wallet if needed.";
+  }
+  if (snapshot.invalidation === "connect-failed") {
+    return "The wallet did not complete a compatible Devnet connection.";
+  }
+  return undefined;
+}
+
+function walletReadinessPanel(pageSignal: AbortSignal): HTMLElement {
+  const panel = createElement("section", { className: "panel wallet-panel" });
+  panel.append(
+    createElement("span", {
+      className: "status-badge",
+      text: "Temporary sprint check",
+    }),
+    createElement("h2", { text: "Browser wallet readiness" }),
+    createElement("p", {
+      className: "muted",
+      text: "This optional check automatically detects compatible Wallet Standard extension metadata locally. Choosing Connect asks the extension to authorize a Devnet-compatible public account for this page. Velorn itself does not transmit that address, call a Solana RPC, request a signature, prepare or send a transaction, or spend anything; the wallet extension follows its own privacy and network policy.",
+    }),
+  );
+
+  const status = createElement("div", { className: "wallet-status" });
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  const actions = createElement("div", { className: "wallet-actions" });
+  panel.append(status, actions);
+
+  let connection: DevnetWalletConnection;
+  let renderedRevision = -1;
+  try {
+    connection = new DevnetWalletConnection();
+  } catch (error: unknown) {
+    status.className = "wallet-status wallet-error";
+    status.textContent = userErrorMessage(
+      error,
+      "Wallet discovery is not available in this browser.",
+    );
+    return panel;
+  }
+
+  const button = (label: string, onClick: () => void): HTMLButtonElement => {
+    const element = createElement("button", {
+      className: "wallet-button",
+      text: label,
+    });
+    element.type = "button";
+    element.addEventListener("click", onClick);
+    return element;
+  };
+
+  const showActionError = (error: unknown, fallback: string): void => {
+    if (pageSignal.aborted) return;
+    status.className = "wallet-status wallet-error";
+    status.textContent = userErrorMessage(error, fallback);
+  };
+
+  const renderSnapshot = (snapshot: DevnetWalletSnapshot): void => {
+    if (pageSignal.aborted || snapshot.revision < renderedRevision) return;
+    renderedRevision = snapshot.revision;
+    actions.replaceChildren();
+    status.replaceChildren();
+    status.className = "wallet-status";
+
+    if (snapshot.status === "connecting") {
+      status.textContent = `Waiting for ${snapshot.wallet?.name ?? "wallet"} authorization…`;
+      actions.append(
+        button("Cancel local connection attempt", () => {
+          void connection
+            .disconnect()
+            .catch(() => undefined);
+        }),
+      );
+      return;
+    }
+    if (snapshot.status === "selecting-account" && snapshot.wallet !== null) {
+      status.textContent = `${snapshot.wallet.name} returned more than one compatible Devnet account. Choose the public address to use for this local check.`;
+      for (const account of snapshot.accounts) {
+        const accountButton = button(
+          `Use ${shortAddress(account.address)}`,
+          () => {
+            try {
+              connection.selectAccount(account.address);
+            } catch (error: unknown) {
+              showActionError(error, "Could not select that wallet account.");
+            }
+          },
+        );
+        accountButton.title = account.address;
+        actions.append(accountButton);
+      }
+      actions.append(
+        button("Clear local connection", () => {
+          void connection
+            .disconnect()
+            .catch(() => undefined);
+        }),
+      );
+      return;
+    }
+    if (
+      snapshot.status === "connected" &&
+      snapshot.wallet !== null &&
+      snapshot.account !== null
+    ) {
+      status.append(
+        createElement("strong", {
+          text: `${snapshot.wallet.name} Devnet-compatible account selected`,
+        }),
+        createElement("span", {
+          className: "wallet-address",
+          text: snapshot.account.address,
+        }),
+        createElement("span", {
+          className: "wallet-safe-copy",
+          text: "Velorn requested no signature or transaction and called no Solana RPC. The wallet extension controls its own authorization and network behavior.",
+        }),
+      );
+      actions.append(
+        button("Clear local connection", () => {
+          void connection
+            .disconnect()
+            .catch(() => undefined);
+        }),
+      );
+      return;
+    }
+    if (snapshot.status === "disposed") {
+      status.textContent = "Wallet readiness check closed.";
+      return;
+    }
+
+    const invalidationCopy = walletInvalidationCopy(snapshot);
+    if (snapshot.wallets.length === 0) {
+      status.textContent = invalidationCopy
+        ? `${invalidationCopy} No compatible Devnet Wallet Standard extension is currently detected.`
+        : "No compatible Devnet Wallet Standard extension is currently detected. The verifier remains fully usable without a wallet.";
+      return;
+    }
+
+    status.textContent =
+      invalidationCopy ??
+      "Compatible extension metadata was detected locally. No account is authorized until you choose one.";
+    for (const wallet of snapshot.wallets) {
+      actions.append(
+        button(`Connect ${wallet.name}`, () => {
+          void connection
+            .connect(wallet)
+            .catch((error: unknown) =>
+              showActionError(error, `${wallet.name} connection was cancelled.`),
+            );
+        }),
+      );
+    }
+  };
+
+  const stop = connection.subscribe(renderSnapshot);
+  renderSnapshot(connection.getSnapshot());
+  const dispose = (): void => {
+    stop();
+    connection.dispose();
+  };
+  if (pageSignal.aborted) dispose();
+  else pageSignal.addEventListener("abort", dispose, { once: true });
+
+  return panel;
 }
 
 function fragmentDisclosure(): HTMLElement {
@@ -130,7 +317,7 @@ function offlineDemoNotice(): HTMLElement {
   return notice;
 }
 
-function renderHome(content: HTMLElement): void {
+function renderHome(content: HTMLElement, pageSignal: AbortSignal): void {
   const hero = createElement("section", { className: "hero" });
   hero.append(
     createElement("span", { className: "eyebrow", text: "Public preview" }),
@@ -185,7 +372,14 @@ function renderHome(content: HTMLElement): void {
     }),
   );
 
-  content.append(hero, privacyNotice(), fragmentDisclosure(), cards, boundary);
+  content.append(
+    hero,
+    privacyNotice(),
+    fragmentDisclosure(),
+    walletReadinessPanel(pageSignal),
+    cards,
+    boundary,
+  );
 }
 
 function definitionRow(label: string, value: string): HTMLElement {
@@ -610,7 +804,7 @@ function renderIssue(
     createElement("span", { className: "status-badge", text: "Not connected" }),
     createElement("h2", { text: "Wallet issuance comes next" }),
     createElement("p", {
-      text: "This browser slice does not discover a wallet, request a signature, pay a fee, or write to Solana. Nothing will happen merely because this link was opened.",
+      text: "This issue page does not show the wallet readiness panel, request a signature, pay a fee, or write to Solana. Nothing will happen merely because this link was opened.",
     }),
   );
   content.append(disabled);
@@ -679,7 +873,7 @@ function render(): void {
   const { shell, content } = pageShell();
   try {
     const route = parseAppFragment(window.location.hash);
-    if (route.route === "home") renderHome(content);
+    if (route.route === "home") renderHome(content, pageController.signal);
     if (route.route === "issue") {
       renderIssue(content, route.payload, pageController.signal);
     }

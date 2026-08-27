@@ -57,10 +57,12 @@ checking:
 npm run dev:web
 ```
 
-The preview does not yet connect a wallet, contact an RPC endpoint, or issue an
-attestation. It has no upload path or analytics; selected files are read in
-bounded chunks and remain on the device. Build the deployable static files with
-`npm run build:web`.
+The preview can now discover and explicitly connect a compatible Wallet
+Standard extension for a connection-only Devnet readiness check. It does not
+request a signature, prepare or send a transaction, contact an RPC endpoint, or
+issue an attestation. It has no upload path or analytics; selected files are
+read in bounded chunks and remain on the device. Build the deployable static
+files with `npm run build:web`.
 
 The home page includes deterministic synthetic links for both routes, so a
 reviewer can exercise the UI without constructing a payload. Those links use
@@ -88,11 +90,11 @@ Devnet revalidation, and atomic exact-cost reservation may a server-only sponsor
 fill its slot. Final signed wire remains server-side for a separate broadcast
 worker and is never returned by the public service result.
 
-This repository does not yet contain the production HTTP service, Wallet
-Standard UI, pinned RPC adapter, durable transactional store, broadcast worker,
-authentication/rate limits, provisional-plan cleanup, or reconciliation
-workers. The included in-memory store is an offline state-machine reference,
-not a deployable sponsorship backend. See
+This repository does not yet contain the production HTTP service, wallet
+transaction-review/signing UI, pinned RPC adapter, durable transactional store,
+broadcast worker, authentication/rate limits, provisional-plan cleanup, or
+reconciliation workers. The included in-memory store is an offline
+state-machine reference, not a deployable sponsorship backend. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete boundary.
 
 ## Run locally

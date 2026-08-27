@@ -41,9 +41,10 @@ bounded URL fragments. Its 6,000-byte payload cap is independent of the general
   links; and
 - clearly states that it has not queried Solana.
 
-The current browser slice has no wallet connection, RPC connection, upload,
-analytics, server API, or issuance path. Its deterministic home-page examples
-are synthetic UI fixtures, not chain evidence.
+The current browser slice includes an optional Wallet Standard discovery and
+connection-only readiness check. It has no wallet-signing call, RPC connection,
+upload, analytics, server API, or issuance path. Its deterministic home-page
+examples are synthetic UI fixtures, not chain evidence.
 
 ## Solana attestation baseline
 
@@ -103,7 +104,8 @@ to the policy service.
 
 Before sponsorship can be deployed, separate reviewed adapters must provide:
 
-- Wallet Standard connection and user-review UI;
+- transaction-review, signing, and account-snapshot binding on top of the
+  connection-only Wallet Standard readiness UI;
 - authenticated HTTP request/body limits and per-IP or per-session rate limits;
 - provisional-plan TTL cleanup, global issuance limits, and storage caps;
 - one private pinned Devnet RPC client with genesis/min-context discipline;
