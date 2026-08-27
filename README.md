@@ -4,6 +4,10 @@ This is an isolated proof of concept for committing media and provenance-manifes
 
 It lives in its own repository, has its own dependencies, and does **not** modify or run the Velorn desktop application. No code from this prototype is loaded by Velorn.
 
+The current four-week Colosseum build, its disclosed pre-sprint baseline, and
+its acceptance criteria are recorded in
+[`docs/ETERNAL_SPRINT.md`](docs/ETERNAL_SPRINT.md).
+
 ## What the proof demonstrates
 
 1. Hash local media bytes and a canonical provenance manifest with SHA-256.
