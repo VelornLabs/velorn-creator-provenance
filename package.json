@@ -1,0 +1,28 @@
+{
+  "name": "velorn-creator-provenance-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated Devnet proof of media commitments using Solana Attestation Service",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "prepare:devnet-wallet": "tsx src/prepare-devnet-wallet.ts",
+    "devnet": "tsx src/devnet-demo.ts",
+    "verify": "tsx src/verify-receipt.ts"
+  },
+  "dependencies": {
+    "@solana-program/compute-budget": "0.11.0",
+    "@solana/kit": "5.5.1",
+    "sas-lib": "1.0.10"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.4",
+    "tsx": "4.20.6",
+    "typescript": "5.8.3"
+  }
+}

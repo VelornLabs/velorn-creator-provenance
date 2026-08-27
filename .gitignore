@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+*.keypair.json
+*.secret.json
+artifacts/
+.local/
+coverage/

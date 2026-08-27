@@ -1,0 +1,24 @@
+Command:
+npm run verify -- evidence/devnet-receipt.json fixtures/sample-export.txt fixtures/sample-provenance-manifest.json
+
+PASS credentialPda
+PASS schemaPda
+PASS attestationPda
+PASS sasProgramOwnership
+PASS creatorRoleConsistency
+PASS credentialName
+PASS credentialAuthority
+PASS authorizedSigner
+PASS schemaCredential
+PASS schemaActive
+PASS schemaShape
+PASS attestationCredential
+PASS attestationSchema
+PASS attestationNonce
+PASS attestationExpiry
+PASS receiptCommitment
+PASS transactionStatuses
+PASS localBytes
+Receipt is valid against the current Devnet accounts.
+
+Exit code: 0

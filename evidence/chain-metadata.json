@@ -1,0 +1,65 @@
+{
+  "network": "devnet",
+  "genesisHash": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+  "programId": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+  "transactions": [
+    {
+      "role": "createCredential",
+      "signature": "66JFqNVHyfPdhSm4ywGyY4PB44o1T2MkuB2mhoY2Q859MsWaDn2f87AzT1yknxJVjALC3n5Z6KaMFakyjHpTn99A",
+      "slot": 488936441,
+      "blockTime": 1787847847,
+      "feeLamports": 5001,
+      "computeUnitsConsumed": 6475,
+      "error": null
+    },
+    {
+      "role": "createSchema",
+      "signature": "Pui76Rv21uioBN33R7VpJvJXgxvwMDUtCxAAQQD65ieifjs1hEnrCFHJfJZ2DqoHWbNRUJoJRRe3LLwC6hKuftT",
+      "slot": 488936446,
+      "blockTime": 1787847848,
+      "feeLamports": 5001,
+      "computeUnitsConsumed": 6070,
+      "error": null
+    },
+    {
+      "role": "createAttestation",
+      "signature": "3sMCHShM8utNQawse9AErnwReQBArwzEKeQcfC99Ysz6CTiGsozE3ub6zPRhjStpPqXLQm5FATkpKzRy8fG25v3M",
+      "slot": 488936452,
+      "blockTime": 1787847849,
+      "feeLamports": 5001,
+      "computeUnitsConsumed": 6397,
+      "error": null
+    }
+  ],
+  "accounts": [
+    {
+      "role": "credential",
+      "address": "4dJQoSmBoAWQX1HRzz6UQbrqB6BGdwSzFPN5haQB2xxD",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 1538160,
+      "dataLength": 93,
+      "executable": false
+    },
+    {
+      "role": "schema",
+      "address": "3weC5nuqPeEE7DbGC5hdBRpeUjAaKoLu9hSsddySyHy5",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 2394240,
+      "dataLength": 216,
+      "executable": false
+    },
+    {
+      "role": "attestation",
+      "address": "7hVnZugMdwhdJ8P6KGAF76VMoShCEtZsmcUTL8MuVfYb",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 3264240,
+      "dataLength": 341,
+      "executable": false
+    }
+  ],
+  "totals": {
+    "transactionFeesLamports": 15003,
+    "accountBalancesLamports": 7196640,
+    "payerBalanceChangeLamports": 7211643
+  }
+}

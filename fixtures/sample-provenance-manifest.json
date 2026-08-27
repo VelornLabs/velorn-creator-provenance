@@ -1,0 +1,11 @@
+{
+  "assertions": [
+    {
+      "label": "org.velorn.synthetic-fixture",
+      "value": "No user media or private project data is included."
+    }
+  ],
+  "claim_generator": "velorn-creator-provenance-poc/0.1.0",
+  "format": "application/x-velorn-provenance-fixture+json",
+  "title": "Synthetic Devnet proof fixture"
+}
