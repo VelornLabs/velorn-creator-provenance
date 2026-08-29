@@ -1,7 +1,4 @@
-import {
-  assertMediaCommitment,
-  type MediaCommitment,
-} from "./commitment.js";
+import type { MediaCommitment } from "./commitment.js";
 
 export const CREDENTIAL_NAME_PREFIX = "VELORN-PROV";
 export const SCHEMA_NAME = "MEDIA-COMMITMENT";
@@ -18,6 +15,7 @@ export const SCHEMA_LAYOUT = Uint8Array.from([12, 12, 12, 0]);
 
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const utf8Encoder = new TextEncoder();
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 
 export function decodeUtf8(bytes: Uint8Array): string {
   return utf8Decoder.decode(bytes);
@@ -69,6 +67,15 @@ export function decodeSasMediaCommitment(value: unknown): MediaCommitment {
     statementType: payload.statement_type,
     version: payload.version,
   };
-  assertMediaCommitment(commitment);
-  return commitment;
+  if (
+    typeof commitment.mediaSha256 !== "string" ||
+    !SHA256_HEX_PATTERN.test(commitment.mediaSha256) ||
+    typeof commitment.manifestSha256 !== "string" ||
+    !SHA256_HEX_PATTERN.test(commitment.manifestSha256) ||
+    commitment.statementType !== "creator_media_commitment_v1" ||
+    commitment.version !== 1
+  ) {
+    throw new TypeError("Commitment does not match the supported schema");
+  }
+  return commitment as MediaCommitment;
 }

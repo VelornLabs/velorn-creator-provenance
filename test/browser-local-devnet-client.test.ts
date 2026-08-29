@@ -7,12 +7,15 @@ import {
   PROVENANCE_LIFECYCLE_CONTRACT,
   PROVENANCE_MANIFEST_CONTRACT,
   createProvenanceRequest,
+  createShareableProvenanceReceipt,
   serializeCanonicalProvenanceRequestJson,
   type ProvenanceRequestV1,
 } from "../src/contracts.js";
 import {
   DEVNET_GENESIS_HASH,
   SAS_PROGRAM_ID,
+  devnetAccountUrl,
+  devnetTransactionUrl,
 } from "../src/receipt.js";
 import {
   LocalDevnetClientError,
@@ -35,6 +38,8 @@ const CSRF = "C".repeat(43);
 const TRANSACTION = "AQ==";
 const TRANSACTION_SIGNATURE =
   "3sMCHShM8utNQawse9AErnwReQBArwzEKeQcfC99Ysz6CTiGsozE3ub6zPRhjStpPqXLQm5FATkpKzRy8fG25v3M";
+const OTHER_TRANSACTION_SIGNATURE =
+  "66JFqNVHyfPdhSm4ywGyY4PB44o1T2MkuB2mhoY2Q859MsWaDn2f87AzT1yknxJVjALC3n5Z6KaMFakyjHpTn99A";
 
 interface FetchCall {
   readonly path: string;
@@ -156,9 +161,11 @@ function enrollmentStatus(
   };
 }
 
-function provenanceRequest(): ProvenanceRequestV1 {
+function provenanceRequest(
+  requestId = "request_browser_client_0001",
+): ProvenanceRequestV1 {
   return createProvenanceRequest({
-    requestId: "request_browser_client_0001",
+    requestId,
     mediaSha256: "11".repeat(32),
     manifest: {
       contract: PROVENANCE_MANIFEST_CONTRACT,
@@ -186,11 +193,57 @@ function attestationPlan(requestId: string, extra: Record<string, unknown> = {})
     credentialAddress: CREDENTIAL,
     schemaAddress: SCHEMA,
     attestationAddress: ATTESTATION,
+    subjectNonce: OTHER_CREATOR,
+    createCredentialTransactionSignature: TRANSACTION_SIGNATURE,
+    createSchemaTransactionSignature: TRANSACTION_SIGNATURE,
     unsignedTransactionBase64: TRANSACTION,
     messageSha256: "22".repeat(32),
     expiryUnixSeconds: "1787936400",
     ...extra,
   };
+}
+
+function shareableReceipt(request = provenanceRequest()) {
+  return createShareableProvenanceReceipt(request, {
+    receiptVersion: 1,
+    network: "devnet",
+    genesisHash: DEVNET_GENESIS_HASH,
+    sasProgramId: SAS_PROGRAM_ID,
+    credentialName: `VELORN-PROV-${CREATOR.slice(0, 8)}`,
+    schemaName: "MEDIA-COMMITMENT",
+    credentialAddress: CREDENTIAL,
+    schemaAddress: SCHEMA,
+    attestationAddress: ATTESTATION,
+    credentialAuthority: CREATOR,
+    authorizedSigner: CREATOR,
+    subjectNonce: OTHER_CREATOR,
+    commitment: request.commitment,
+    expiryUnixSeconds: "1787936400",
+    accountExplorerUrls: {
+      credential: devnetAccountUrl(CREDENTIAL),
+      schema: devnetAccountUrl(SCHEMA),
+      attestation: devnetAccountUrl(ATTESTATION),
+    },
+    transactions: {
+      createCredential: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+      createSchema: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+      createAttestation: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+    },
+    receiptWrittenAt: "2026-08-28T17:00:00.000Z",
+    implementation: {
+      sasLib: "1.0.10",
+      solanaKit: "5.5.1",
+    },
+  });
 }
 
 function attestationStatus(
@@ -207,6 +260,7 @@ function attestationStatus(
     ...(state === "submitted" || state === "confirmed"
       ? { transactionSignature: TRANSACTION_SIGNATURE }
       : {}),
+    ...(state === "confirmed" ? { receipt: shareableReceipt() } : {}),
     ...extra,
   };
 }
@@ -429,6 +483,101 @@ test("rejects extra response fields at the session, plan, and status boundaries"
       response(connectResult()),
       response(attestationPlan(request.requestId)),
       response(attestationStatus(request.requestId, "confirmed", { extra: true })),
+    ]);
+    const client = await connectClient(queue);
+    await client.beginAttestation(request);
+    await assert.rejects(
+      client.getAttestationStatus(),
+      (error) => assertClientError(error, "INVALID_RESPONSE"),
+    );
+  }
+});
+
+test("accepts receipts only on confirmed status and cross-binds every public proof identity", async () => {
+  const request = provenanceRequest();
+  const altered = (
+    mutate: (receipt: ReturnType<typeof shareableReceipt>) => void,
+  ) => {
+    const receipt = structuredClone(shareableReceipt(request));
+    mutate(receipt);
+    return receipt;
+  };
+  const invalidReceipts = [
+    shareableReceipt(provenanceRequest("request_browser_client_9999")),
+    altered((receipt) => {
+      receipt.chainReceipt.credentialAuthority = OTHER_CREATOR;
+      receipt.chainReceipt.authorizedSigner = OTHER_CREATOR;
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.credentialAddress = OTHER_CREATOR;
+      receipt.chainReceipt.accountExplorerUrls.credential =
+        devnetAccountUrl(OTHER_CREATOR);
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.schemaAddress = OTHER_CREATOR;
+      receipt.chainReceipt.accountExplorerUrls.schema =
+        devnetAccountUrl(OTHER_CREATOR);
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.attestationAddress = OTHER_CREATOR;
+      receipt.chainReceipt.accountExplorerUrls.attestation =
+        devnetAccountUrl(OTHER_CREATOR);
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.subjectNonce = SPONSOR;
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.transactions.createCredential.signature =
+        OTHER_TRANSACTION_SIGNATURE;
+      receipt.chainReceipt.transactions.createCredential.explorerUrl =
+        devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.transactions.createSchema.signature =
+        OTHER_TRANSACTION_SIGNATURE;
+      receipt.chainReceipt.transactions.createSchema.explorerUrl =
+        devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+    }),
+    altered((receipt) => {
+      receipt.chainReceipt.transactions.createAttestation.signature =
+        OTHER_TRANSACTION_SIGNATURE;
+      receipt.chainReceipt.transactions.createAttestation.explorerUrl =
+        devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+    }),
+  ];
+
+  for (const receipt of invalidReceipts) {
+    const queue = new FetchQueue([
+      response(session()),
+      response(connectResult()),
+      response(attestationPlan(request.requestId)),
+      response(attestationStatus(request.requestId, "confirmed", { receipt })),
+    ]);
+    const client = await connectClient(queue);
+    await client.beginAttestation(request);
+    await assert.rejects(
+      client.getAttestationStatus(),
+      (error) => assertClientError(error, "INVALID_RESPONSE"),
+    );
+  }
+
+  const confirmedWithoutReceipt = attestationStatus(
+    request.requestId,
+    "confirmed",
+  ) as Record<string, unknown>;
+  delete confirmedWithoutReceipt.receipt;
+  const forbiddenShapes = [
+    confirmedWithoutReceipt,
+    attestationStatus(request.requestId, "submitted", {
+      receipt: shareableReceipt(request),
+    }),
+  ];
+  for (const status of forbiddenShapes) {
+    const queue = new FetchQueue([
+      response(session()),
+      response(connectResult()),
+      response(attestationPlan(request.requestId)),
+      response(status),
     ]);
     const client = await connectClient(queue);
     await client.beginAttestation(request);

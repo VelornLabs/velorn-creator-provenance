@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const mainSource = await readFile("web/src/main.ts", "utf8");
+const webIndex = await readFile("web/index.html", "utf8");
 
 function sourceSection(start: string, end: string): string {
   const startIndex = mainSource.indexOf(start);
@@ -77,4 +78,33 @@ test("issue copy scopes wallet discovery claims to the issue route", () => {
   const issue = sourceSection("function renderIssue", "function renderVerify");
   assert.match(issue, /This issue page does not show the wallet readiness panel/u);
   assert.doesNotMatch(issue, /browser slice does not discover a wallet/u);
+});
+
+test("real receipt verification is explicit, fixed to Devnet, and keeps media local", () => {
+  const liveCheck = sourceSection(
+    "function liveChainCheck",
+    "function formatBytes",
+  );
+  const verify = sourceSection("function renderVerify", "function renderError");
+
+  assert.match(liveCheck, /Check live Solana Devnet/u);
+  assert.match(liveCheck, /explicitly choose the live check/u);
+  assert.match(liveCheck, /IP address/u);
+  assert.match(liveCheck, /media bytes, filename, and local path are never sent/u);
+  assert.match(liveCheck, /import\("\.\.\/\.\.\/src\/verify-chain\.js"\)/u);
+  assert.match(liveCheck, /verifyShareableReceiptOnDevnet\(receipt/u);
+  assert.match(liveCheck, /Cancel live check/u);
+  assert.match(liveCheck, /has not been marked invalid/u);
+  assert.match(liveCheck, /supporting references/u);
+  assert.match(liveCheck, /does not yet decode each historical transaction/u);
+  assert.match(liveCheck, /not an on-chain timestamp/u);
+  assert.match(verify, /isOfflineDemoRequest\(payload\.request\)[\s\S]*syntheticChainCheckPanel\(\)[\s\S]*liveChainCheck\(payload, pageSignal\)/u);
+});
+
+test("only the public verifier CSP permits the fixed Devnet HTTP endpoint", () => {
+  assert.match(
+    webIndex,
+    /connect-src 'self' https:\/\/api\.devnet\.solana\.com/u,
+  );
+  assert.doesNotMatch(webIndex, /wss:|https:\/\/\*/u);
 });

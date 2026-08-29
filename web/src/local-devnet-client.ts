@@ -1,8 +1,11 @@
 import { address, signature } from "@solana/kit";
 
 import {
+  parseCanonicalShareableProvenanceReceiptJson,
   serializeCanonicalProvenanceRequestJson,
+  serializeCanonicalShareableProvenanceReceiptJson,
   type ProvenanceRequestV1,
+  type ShareableProvenanceReceiptV1,
 } from "../../src/contracts.js";
 import {
   DEVNET_GENESIS_HASH,
@@ -16,6 +19,10 @@ import type {
   LocalDevnetHarnessEnrollmentResult,
   LocalDevnetHarnessEnrollmentStatus,
 } from "../../src/local-devnet-harness.js";
+import {
+  CREDENTIAL_NAME_PREFIX,
+  SCHEMA_NAME,
+} from "../../src/protocol.js";
 
 /**
  * Browser-only client for the fixed loopback Eternal Devnet harness. This
@@ -59,8 +66,8 @@ const RESPONSE_LIMITS: Readonly<Record<Route, number>> = Object.freeze({
   [ROUTES.enrollmentComplete]: 2_048,
   [ROUTES.enrollmentStatus]: 2_048,
   [ROUTES.attestationBegin]: 4_096,
-  [ROUTES.attestationComplete]: 2_048,
-  [ROUTES.attestationStatus]: 2_048,
+  [ROUTES.attestationComplete]: 16_384,
+  [ROUTES.attestationStatus]: 16_384,
 });
 
 const MAX_ERROR_RESPONSE_BYTES = 1_024;
@@ -73,6 +80,8 @@ const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const TRANSACTION_SIGNATURE_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{64,96}$/u;
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const POSITIVE_I64_MAX = 9_223_372_036_854_775_807n;
+const SAS_LIB_IMPLEMENTATION_VERSION = "1.0.10" as const;
+const SOLANA_KIT_IMPLEMENTATION_VERSION = "5.5.1" as const;
 
 interface LocalDevnetResponseHeaders {
   get(name: string): string | null;
@@ -136,7 +145,14 @@ interface CreatorBinding {
 interface ActiveAttestation {
   readonly planId: string;
   readonly requestId: string;
+  readonly canonicalRequestJson: string;
+  readonly credentialAddress: string;
+  readonly schemaAddress: string;
   readonly attestationAddress: string;
+  readonly subjectNonce: string;
+  readonly createCredentialTransactionSignature: string;
+  readonly createSchemaTransactionSignature: string;
+  readonly expiryUnixSeconds: string;
 }
 
 export class LocalDevnetClientError extends Error {
@@ -533,6 +549,9 @@ function parseAttestationPlan(
     "credentialAddress",
     "schemaAddress",
     "attestationAddress",
+    "subjectNonce",
+    "createCredentialTransactionSignature",
+    "createSchemaTransactionSignature",
     "unsignedTransactionBase64",
     "messageSha256",
     "expiryUnixSeconds",
@@ -545,6 +564,13 @@ function parseAttestationPlan(
     credentialAddress: canonicalResponseAddress(value.credentialAddress),
     schemaAddress: canonicalResponseAddress(value.schemaAddress),
     attestationAddress: canonicalResponseAddress(value.attestationAddress),
+    subjectNonce: canonicalResponseAddress(value.subjectNonce),
+    createCredentialTransactionSignature: canonicalResponseTransactionSignature(
+      value.createCredentialTransactionSignature,
+    ),
+    createSchemaTransactionSignature: canonicalResponseTransactionSignature(
+      value.createSchemaTransactionSignature,
+    ),
     unsignedTransactionBase64: canonicalResponseTransactionBase64(
       value.unsignedTransactionBase64,
     ),
@@ -565,6 +591,7 @@ function parseAttestationStatus(
     value,
     "transactionSignature",
   );
+  const hasReceipt = Object.prototype.hasOwnProperty.call(value, "receipt");
   assertExactKeys(value, [
     "state",
     "planId",
@@ -572,6 +599,7 @@ function parseAttestationStatus(
     "creatorAuthority",
     "attestationAddress",
     ...(hasSignature ? ["transactionSignature"] : []),
+    ...(hasReceipt ? ["receipt"] : []),
   ]);
   if (
     value.state !== "prepared" &&
@@ -598,13 +626,79 @@ function parseAttestationStatus(
   ) {
     invalidResponse();
   }
+  if (
+    (value.state === "prepared" || value.state === "failed") &&
+    transactionSignature !== undefined
+  ) {
+    invalidResponse();
+  }
+  if ((value.state === "confirmed") !== hasReceipt) {
+    invalidResponse();
+  }
+  if (value.state === "confirmed") {
+    if (transactionSignature === undefined) invalidResponse();
+    let receipt: ShareableProvenanceReceiptV1;
+    try {
+      const canonicalReceipt =
+        serializeCanonicalShareableProvenanceReceiptJson(
+          value.receipt as ShareableProvenanceReceiptV1,
+        );
+      receipt = parseCanonicalShareableProvenanceReceiptJson(canonicalReceipt);
+    } catch {
+      invalidResponse();
+    }
+    const chain = receipt.chainReceipt;
+    if (
+      serializeCanonicalProvenanceRequestJson(receipt.request) !==
+        active.canonicalRequestJson ||
+      receipt.request.requestId !== active.requestId ||
+      chain.credentialAuthority !== expected.creatorAuthority ||
+      chain.authorizedSigner !== expected.creatorAuthority ||
+      chain.credentialName !==
+        `${CREDENTIAL_NAME_PREFIX}-${expected.creatorAuthority.slice(0, 8)}` ||
+      chain.schemaName !== SCHEMA_NAME ||
+      chain.credentialAddress !== active.credentialAddress ||
+      chain.schemaAddress !== active.schemaAddress ||
+      chain.attestationAddress !== active.attestationAddress ||
+      chain.subjectNonce !== active.subjectNonce ||
+      chain.expiryUnixSeconds !== active.expiryUnixSeconds ||
+      chain.transactions.createCredential.signature !==
+        active.createCredentialTransactionSignature ||
+      chain.transactions.createSchema.signature !==
+        active.createSchemaTransactionSignature ||
+      chain.transactions.createAttestation.signature !== transactionSignature ||
+      chain.implementation.sasLib !== SAS_LIB_IMPLEMENTATION_VERSION ||
+      chain.implementation.solanaKit !== SOLANA_KIT_IMPLEMENTATION_VERSION
+    ) {
+      invalidResponse();
+    }
+    return Object.freeze({
+      state: "confirmed",
+      planId: active.planId,
+      requestId: active.requestId,
+      creatorAuthority: expected.creatorAuthority,
+      attestationAddress: active.attestationAddress,
+      transactionSignature,
+      receipt,
+    });
+  }
+  if (value.state === "submitted") {
+    if (transactionSignature === undefined) invalidResponse();
+    return Object.freeze({
+      state: "submitted",
+      planId: active.planId,
+      requestId: active.requestId,
+      creatorAuthority: expected.creatorAuthority,
+      attestationAddress: active.attestationAddress,
+      transactionSignature,
+    });
+  }
   return Object.freeze({
     state: value.state,
     planId: active.planId,
     requestId: active.requestId,
     creatorAuthority: expected.creatorAuthority,
     attestationAddress: active.attestationAddress,
-    ...(transactionSignature === undefined ? {} : { transactionSignature }),
   });
 }
 
@@ -842,7 +936,15 @@ export class LocalDevnetHarnessClient {
     this.#activeAttestation = Object.freeze({
       planId: result.planId,
       requestId: result.requestId,
+      canonicalRequestJson: canonicalRequest,
+      credentialAddress: result.credentialAddress,
+      schemaAddress: result.schemaAddress,
       attestationAddress: result.attestationAddress,
+      subjectNonce: result.subjectNonce,
+      createCredentialTransactionSignature:
+        result.createCredentialTransactionSignature,
+      createSchemaTransactionSignature: result.createSchemaTransactionSignature,
+      expiryUnixSeconds: result.expiryUnixSeconds,
     });
     return result;
   }

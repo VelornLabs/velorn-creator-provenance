@@ -84,6 +84,28 @@ test("Explorer links are fixed to Solana Devnet", () => {
   );
 });
 
+test("a finalized proof exposes a canonical receipt and fixed local verifier link", () => {
+  assert.match(
+    source,
+    /LOCAL_PUBLIC_VERIFIER_ORIGIN = "http:\/\/127\.0\.0\.1:5173" as const/u,
+  );
+  assert.match(source, /encodeVerifyFragment\(receipt\)/u);
+  const confirmed = section(
+    "  #renderConfirmed(): HTMLElement",
+    "\n}\n\nfunction renderOriginFailure",
+  );
+  assert.match(confirmed, /status\?\.state === "confirmed"/u);
+  assert.match(confirmed, /status\.receipt/u);
+  assert.match(confirmed, /Open the local verifier/u);
+  assert.match(confirmed, /target = "_blank"/u);
+  assert.match(confirmed, /noopener noreferrer/u);
+  assert.match(confirmed, /serializeCanonicalShareableProvenanceReceiptJson/u);
+  assert.match(confirmed, /too large for a safe URL fragment/u);
+  assert.match(confirmed, /not yet a public share URL/u);
+  assert.match(confirmed, /never the media file, filename, local path, prompt, private key, or sponsor secret/u);
+  assert.doesNotMatch(confirmed, /window\.open|clipboard|click\(\)/u);
+});
+
 test("mount is inert until the explicit Start action", () => {
   const constructor = section("  constructor(\n", "\n  dispose(): void");
   assert.match(constructor, /this\.#render\(\)/u);

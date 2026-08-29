@@ -22,6 +22,7 @@ The on-chain record proves that a particular Solana signer made a commitment to 
 
 - Media bytes remain local in the browser and are never placed in a provenance link. Only the compact SHA-256 commitments, statement identifier, and schema version are written into the SAS attestation.
 - The `#issue/v1` and `#verify/v1` links intentionally contain opted-in public manifest metadata, lifecycle data, creator profile URLs, and receipt evidence. Sharing one sends those fields to the recipient, and browser or clipboard history may retain the link; URL encoding is not encryption.
+- Opening a verifier link makes no Solana request. A separate explicit live-check action contacts only the fixed public Devnet RPC; that provider can observe the visitor's IP/origin and the public addresses/signatures being queried, but receives no media bytes, filename, or local path.
 - The default Devnet attempt creates disposable in-memory keypairs. The optional reusable-wallet command stores one **Devnet-only** seed in the ignored `.local/` directory with mode `0600`; neither path prints the secret or includes it in a receipt.
 - Do not use a real wallet or real funds with this proof of concept.
 - `artifacts/` is ignored because receipts are run-specific. A receipt contains public information only.
@@ -42,11 +43,12 @@ The proposed standard grant would fund only that reusable open-source public-goo
 ## Requirements
 
 - Node.js 22.12 or later
-- Network access to Solana Devnet for the CLI issuance/verifier flow
+- Network access to Solana Devnet for issuance, CLI verification, or the optional explicit browser live check
 
-The static browser preview does not require Solana network access after its
-dependencies are installed. The Solana CLI and Rust toolchain are not required
-for the TypeScript Devnet flow.
+The static browser preview and local byte checker do not require Solana network
+access after their dependencies are installed. Only its explicit live-chain
+button contacts Devnet. The Solana CLI and Rust toolchain are not required for
+the TypeScript Devnet flow.
 
 ## Browser preview
 
@@ -59,11 +61,13 @@ npm run dev:web
 ```
 
 The preview can now discover and explicitly connect a compatible Wallet
-Standard extension for a connection-only Devnet readiness check. It does not
-request a signature, prepare or send a transaction, contact an RPC endpoint, or
-issue an attestation. It has no upload path or analytics; selected files are
-read in bounded chunks and remain on the device. Build the deployable static
-files with `npm run build:web`.
+Standard extension for a connection-only Devnet readiness check. That wallet
+check does not request a signature, prepare or send a transaction, contact an
+RPC endpoint, or issue an attestation. On a real receipt, the verifier also
+offers a separate explicit-click, read-only Devnet check against the fixed
+public RPC. It has no upload path or analytics; selected files are read in
+bounded chunks and remain on the device. Build the deployable static files with
+`npm run build:web`.
 
 The home page includes deterministic synthetic links for both routes, so a
 reviewer can exercise the UI without constructing a payload. Those links use
@@ -100,6 +104,13 @@ infrastructure.
 If a confirmation response is delayed or lost, use the page's explicit status
 check. It checks the already-signed transaction and never signs, resubmits, or
 rebroadcasts it.
+
+After finalized confirmation, the service assembles and caches one canonical
+public receipt from its retained request and finalized enrollment/proof records.
+Only the confirmed status can return that receipt. The page then offers an
+explicit verifier link and the canonical JSON; it never auto-opens, auto-copies,
+or includes the media, filename, local path, wallet metadata, private keys, or
+signed transaction wire.
 
 ## Public-wire contract boundary
 

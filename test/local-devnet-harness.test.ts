@@ -11,6 +11,7 @@ import {
   PROVENANCE_LIFECYCLE_CONTRACT,
   PROVENANCE_MANIFEST_CONTRACT,
   createProvenanceRequest,
+  createShareableProvenanceReceipt,
   type ProvenanceRequestV1,
 } from "../src/contracts.js";
 import {
@@ -31,6 +32,8 @@ import {
 import {
   DEVNET_GENESIS_HASH,
   SAS_PROGRAM_ID,
+  devnetAccountUrl,
+  devnetTransactionUrl,
 } from "../src/receipt.js";
 import { createLocalDevnetViteConfig } from "../vite.devnet.config.js";
 import { LOCAL_DEVNET_HARNESS_CSP } from "../vite.devnet.config.js";
@@ -46,10 +49,14 @@ const ATTESTATION_PLAN_ID = "A".repeat(22);
 const SIGNED_TRANSACTION = "AQ==";
 const TRANSACTION_SIGNATURE =
   "3sMCHShM8utNQawse9AErnwReQBArwzEKeQcfC99Ysz6CTiGsozE3ub6zPRhjStpPqXLQm5FATkpKzRy8fG25v3M";
+const OTHER_TRANSACTION_SIGNATURE =
+  "66JFqNVHyfPdhSm4ywGyY4PB44o1T2MkuB2mhoY2Q859MsWaDn2f87AzT1yknxJVjALC3n5Z6KaMFakyjHpTn99A";
 
-function provenanceRequest(): ProvenanceRequestV1 {
+function provenanceRequest(
+  requestId = "request_harness_000001",
+): ProvenanceRequestV1 {
   return createProvenanceRequest({
-    requestId: "request_harness_000001",
+    requestId,
     mediaSha256: "11".repeat(32),
     manifest: {
       contract: PROVENANCE_MANIFEST_CONTRACT,
@@ -65,6 +72,49 @@ function provenanceRequest(): ProvenanceRequestV1 {
         version: CONTRACT_VERSION,
         action: "issue",
       },
+    },
+  });
+}
+
+function shareableReceipt(request = provenanceRequest()) {
+  return createShareableProvenanceReceipt(request, {
+    receiptVersion: 1,
+    network: "devnet",
+    genesisHash: DEVNET_GENESIS_HASH,
+    sasProgramId: SAS_PROGRAM_ID,
+    credentialName: `VELORN-PROV-${CREATOR.slice(0, 8)}`,
+    schemaName: "MEDIA-COMMITMENT",
+    credentialAddress: CREDENTIAL,
+    schemaAddress: SCHEMA,
+    attestationAddress: ATTESTATION,
+    credentialAuthority: CREATOR,
+    authorizedSigner: CREATOR,
+    subjectNonce: OTHER_CREATOR,
+    commitment: request.commitment,
+    expiryUnixSeconds: "1787936400",
+    accountExplorerUrls: {
+      credential: devnetAccountUrl(CREDENTIAL),
+      schema: devnetAccountUrl(SCHEMA),
+      attestation: devnetAccountUrl(ATTESTATION),
+    },
+    transactions: {
+      createCredential: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+      createSchema: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+      createAttestation: {
+        signature: TRANSACTION_SIGNATURE,
+        explorerUrl: devnetTransactionUrl(TRANSACTION_SIGNATURE),
+      },
+    },
+    receiptWrittenAt: "2026-08-28T17:00:00.000Z",
+    implementation: {
+      sasLib: "1.0.10",
+      solanaKit: "5.5.1",
     },
   });
 }
@@ -91,6 +141,9 @@ class MockFlow implements LocalDevnetHarnessFlowService {
     "confirmed";
   throwConnect: unknown;
   connectResultExtension: Record<string, unknown> | undefined;
+  attestationStatusExtension: Record<string, unknown> | undefined;
+  confirmedReceiptOverride: unknown = shareableReceipt();
+  omitConfirmedReceipt = false;
   expiryUnixSeconds = "1787936400";
 
   async connectCreator(input: {
@@ -176,6 +229,9 @@ class MockFlow implements LocalDevnetHarnessFlowService {
       credentialAddress: CREDENTIAL,
       schemaAddress: SCHEMA,
       attestationAddress: ATTESTATION,
+      subjectNonce: OTHER_CREATOR,
+      createCredentialTransactionSignature: TRANSACTION_SIGNATURE,
+      createSchemaTransactionSignature: TRANSACTION_SIGNATURE,
       unsignedTransactionBase64: SIGNED_TRANSACTION,
       messageSha256: "22".repeat(32),
       expiryUnixSeconds: this.expiryUnixSeconds,
@@ -204,14 +260,29 @@ class MockFlow implements LocalDevnetHarnessFlowService {
     input: { creatorAuthority: string; planId: string },
     state: "submitted" | "confirmed",
   ): LocalDevnetHarnessAttestationStatus {
+    if (state === "confirmed") {
+      return {
+        state: "confirmed",
+        planId: input.planId,
+        requestId: provenanceRequest().requestId,
+        creatorAuthority: input.creatorAuthority,
+        attestationAddress: ATTESTATION,
+        transactionSignature: TRANSACTION_SIGNATURE,
+        ...(this.omitConfirmedReceipt
+          ? {}
+          : { receipt: this.confirmedReceiptOverride }),
+        ...this.attestationStatusExtension,
+      } as LocalDevnetHarnessAttestationStatus;
+    }
     return {
-      state,
+      state: "submitted",
       planId: input.planId,
       requestId: provenanceRequest().requestId,
       creatorAuthority: input.creatorAuthority,
       attestationAddress: ATTESTATION,
       transactionSignature: TRANSACTION_SIGNATURE,
-    };
+      ...this.attestationStatusExtension,
+    } as LocalDevnetHarnessAttestationStatus;
   }
 }
 
@@ -777,15 +848,15 @@ test("attestation completion is one-shot and status is bound to its plan", async
       planId: ATTESTATION_PLAN_ID,
       signedTransactionBase64: SIGNED_TRANSACTION,
     };
-    assert.equal(
-      (await postJson(
-        harness,
-        auth,
-        "/__local-devnet/attestation/complete",
-        completion,
-      )).status,
-      200,
+    const completed = await postJson(
+      harness,
+      auth,
+      "/__local-devnet/attestation/complete",
+      completion,
     );
+    assert.equal(completed.status, 200);
+    assert.equal(completed.json.state, "submitted");
+    assert.equal(completed.json.receipt, undefined);
     assert.equal(
       (await postJson(
         harness,
@@ -810,6 +881,7 @@ test("attestation completion is one-shot and status is bound to its plan", async
     );
     assert.equal(status.status, 200);
     assert.equal(status.json.state, "confirmed");
+    assert.equal(typeof status.json.receipt, "object");
     assert.equal(harness.flow.attestationCompleteCalls, 1);
   } finally {
     await stopHarness(harness.server);
@@ -838,6 +910,15 @@ test("one confirmed issuance prevents a second begin", async () => {
       },
     );
     assert.equal(complete.status, 200);
+    assert.equal(complete.json.state, "confirmed");
+    const recovered = await postJson(
+      harness,
+      auth,
+      "/__local-devnet/attestation/status",
+      { creatorAuthority: CREATOR, planId: ATTESTATION_PLAN_ID },
+    );
+    assert.equal(recovered.status, 200);
+    assert.deepEqual(recovered.json.receipt, complete.json.receipt);
     const second = await postJson(
       harness,
       auth,
@@ -848,6 +929,124 @@ test("one confirmed issuance prevents a second begin", async () => {
     assert.equal(flow.attestationBeginCalls, 1);
   } finally {
     await stopHarness(harness.server);
+  }
+});
+
+test("attestation receipt is confirmed-only and exactly cross-bound at the harness", async () => {
+  const altered = (
+    mutate: (receipt: ReturnType<typeof shareableReceipt>) => void,
+  ) => {
+    const receipt = structuredClone(shareableReceipt());
+    mutate(receipt);
+    return receipt;
+  };
+  const wrongRequestReceipt = shareableReceipt(
+    provenanceRequest("request_harness_999999"),
+  );
+  const wrongCreatorReceipt = altered((receipt) => {
+    receipt.chainReceipt.credentialAuthority = OTHER_CREATOR;
+    receipt.chainReceipt.authorizedSigner = OTHER_CREATOR;
+  });
+  const wrongCredentialReceipt = altered((receipt) => {
+    receipt.chainReceipt.credentialAddress = OTHER_CREATOR;
+    receipt.chainReceipt.accountExplorerUrls.credential =
+      devnetAccountUrl(OTHER_CREATOR);
+  });
+  const wrongSchemaReceipt = altered((receipt) => {
+    receipt.chainReceipt.schemaAddress = OTHER_CREATOR;
+    receipt.chainReceipt.accountExplorerUrls.schema =
+      devnetAccountUrl(OTHER_CREATOR);
+  });
+  const wrongAttestationReceipt = altered((receipt) => {
+    receipt.chainReceipt.attestationAddress = OTHER_CREATOR;
+    receipt.chainReceipt.accountExplorerUrls.attestation =
+      devnetAccountUrl(OTHER_CREATOR);
+  });
+  const wrongNonceReceipt = altered((receipt) => {
+    receipt.chainReceipt.subjectNonce = SPONSOR;
+  });
+  const wrongCredentialTransactionReceipt = altered((receipt) => {
+    receipt.chainReceipt.transactions.createCredential.signature =
+      OTHER_TRANSACTION_SIGNATURE;
+    receipt.chainReceipt.transactions.createCredential.explorerUrl =
+      devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+  });
+  const wrongSchemaTransactionReceipt = altered((receipt) => {
+    receipt.chainReceipt.transactions.createSchema.signature =
+      OTHER_TRANSACTION_SIGNATURE;
+    receipt.chainReceipt.transactions.createSchema.explorerUrl =
+      devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+  });
+  const wrongTransactionReceipt = altered((receipt) => {
+    receipt.chainReceipt.transactions.createAttestation.signature =
+      OTHER_TRANSACTION_SIGNATURE;
+    receipt.chainReceipt.transactions.createAttestation.explorerUrl =
+      devnetTransactionUrl(OTHER_TRANSACTION_SIGNATURE);
+  });
+
+  for (const invalidReceipt of [
+    wrongRequestReceipt,
+    wrongCreatorReceipt,
+    wrongCredentialReceipt,
+    wrongSchemaReceipt,
+    wrongAttestationReceipt,
+    wrongNonceReceipt,
+    wrongCredentialTransactionReceipt,
+    wrongSchemaTransactionReceipt,
+    wrongTransactionReceipt,
+  ]) {
+    const flow = new MockFlow();
+    flow.confirmedReceiptOverride = invalidReceipt;
+    const harness = await startHarness(flow);
+    try {
+      const auth = await session(harness);
+      await connect(harness, auth);
+      await postJson(harness, auth, "/__local-devnet/attestation/begin", {
+        creatorAuthority: CREATOR,
+        request: provenanceRequest(),
+      });
+      const result = await postJson(
+        harness,
+        auth,
+        "/__local-devnet/attestation/status",
+        { creatorAuthority: CREATOR, planId: ATTESTATION_PLAN_ID },
+      );
+      assert.equal(result.status, 503);
+      assert.equal(result.json.error instanceof Object, true);
+    } finally {
+      await stopHarness(harness.server);
+    }
+  }
+
+  for (const configure of [
+    (flow: MockFlow) => {
+      flow.omitConfirmedReceipt = true;
+    },
+    (flow: MockFlow) => {
+      flow.statusState = "submitted";
+      flow.attestationStatusExtension = { receipt: shareableReceipt() };
+    },
+  ]) {
+    const flow = new MockFlow();
+    configure(flow);
+    const harness = await startHarness(flow);
+    try {
+      const auth = await session(harness);
+      await connect(harness, auth);
+      await postJson(harness, auth, "/__local-devnet/attestation/begin", {
+        creatorAuthority: CREATOR,
+        request: provenanceRequest(),
+      });
+      const result = await postJson(
+        harness,
+        auth,
+        "/__local-devnet/attestation/status",
+        { creatorAuthority: CREATOR, planId: ATTESTATION_PLAN_ID },
+      );
+      assert.equal(result.status, 503);
+    } finally {
+      await stopHarness(harness.server);
+    }
   }
 });
 

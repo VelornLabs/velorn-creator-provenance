@@ -5,13 +5,20 @@ import { address, signature } from "@solana/kit";
 
 import {
   parseCanonicalProvenanceRequestJson,
+  parseCanonicalShareableProvenanceReceiptJson,
   serializeCanonicalProvenanceRequestJson,
+  serializeCanonicalShareableProvenanceReceiptJson,
   type ProvenanceRequestV1,
+  type ShareableProvenanceReceiptV1,
 } from "./contracts.js";
 import {
   DEVNET_GENESIS_HASH,
   SAS_PROGRAM_ID,
 } from "./receipt.js";
+import {
+  CREDENTIAL_NAME_PREFIX,
+  SCHEMA_NAME,
+} from "./protocol.js";
 
 /**
  * Local, deliberately non-production HTTP boundary for the Eternal Devnet
@@ -40,6 +47,8 @@ const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)$/u;
 const POSITIVE_DECIMAL_PATTERN = /^[1-9]\d*$/u;
 const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const TRANSACTION_SIGNATURE_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{64,96}$/u;
+const SAS_LIB_IMPLEMENTATION_VERSION = "1.0.10" as const;
+const SOLANA_KIT_IMPLEMENTATION_VERSION = "5.5.1" as const;
 
 const ROUTES = Object.freeze({
   session: `${LOCAL_DEVNET_HARNESS_PREFIX}/session`,
@@ -55,7 +64,6 @@ const ROUTES = Object.freeze({
 type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
 type EnrollmentState = "required" | "ready";
 type EnrollmentPlanState = "prepared" | "submitted" | "confirmed" | "failed";
-type AttestationState = "prepared" | "submitted" | "confirmed" | "failed";
 
 export interface LocalDevnetHarnessPublicConfiguration {
   readonly network: "solana:devnet";
@@ -117,20 +125,38 @@ export interface LocalDevnetHarnessAttestationPlan {
   readonly credentialAddress: string;
   readonly schemaAddress: string;
   readonly attestationAddress: string;
+  readonly subjectNonce: string;
+  readonly createCredentialTransactionSignature: string;
+  readonly createSchemaTransactionSignature: string;
   /** Creator-unsigned wire only. The sponsor slot must still be empty. */
   readonly unsignedTransactionBase64: string;
   readonly messageSha256: string;
   readonly expiryUnixSeconds: string;
 }
 
-export interface LocalDevnetHarnessAttestationStatus {
-  readonly state: AttestationState;
+interface LocalDevnetHarnessAttestationStatusBase {
   readonly planId: string;
   readonly requestId: string;
   readonly creatorAuthority: string;
   readonly attestationAddress: string;
-  readonly transactionSignature?: string;
 }
+
+export type LocalDevnetHarnessAttestationStatus =
+  | (LocalDevnetHarnessAttestationStatusBase & {
+      readonly state: "prepared" | "failed";
+      readonly transactionSignature?: never;
+      readonly receipt?: never;
+    })
+  | (LocalDevnetHarnessAttestationStatusBase & {
+      readonly state: "submitted";
+      readonly transactionSignature: string;
+      readonly receipt?: never;
+    })
+  | (LocalDevnetHarnessAttestationStatusBase & {
+      readonly state: "confirmed";
+      readonly transactionSignature: string;
+      readonly receipt: ShareableProvenanceReceiptV1;
+    });
 
 /**
  * Narrow semantic seam. Implementations compose the enrollment/planner/policy/
@@ -185,6 +211,14 @@ interface ActiveAttestationPlan {
   readonly kind: "attestation";
   readonly planId: string;
   readonly requestId: string;
+  readonly canonicalRequestJson: string;
+  readonly credentialAddress: string;
+  readonly schemaAddress: string;
+  readonly attestationAddress: string;
+  readonly subjectNonce: string;
+  readonly createCredentialTransactionSignature: string;
+  readonly createSchemaTransactionSignature: string;
+  readonly expiryUnixSeconds: string;
   completionAttempted: boolean;
 }
 
@@ -792,6 +826,9 @@ function validateAttestationPlan(
       "credentialAddress",
       "schemaAddress",
       "attestationAddress",
+      "subjectNonce",
+      "createCredentialTransactionSignature",
+      "createSchemaTransactionSignature",
       "unsignedTransactionBase64",
       "messageSha256",
       "expiryUnixSeconds",
@@ -812,6 +849,13 @@ function validateAttestationPlan(
     credentialAddress: canonicalAddress(value.credentialAddress, "Credential address"),
     schemaAddress: canonicalAddress(value.schemaAddress, "Schema address"),
     attestationAddress: canonicalAddress(value.attestationAddress, "Attestation address"),
+    subjectNonce: canonicalAddress(value.subjectNonce, "Subject nonce"),
+    createCredentialTransactionSignature: canonicalTransactionSignature(
+      value.createCredentialTransactionSignature,
+    ),
+    createSchemaTransactionSignature: canonicalTransactionSignature(
+      value.createSchemaTransactionSignature,
+    ),
     unsignedTransactionBase64: canonicalTransactionBase64(
       value.unsignedTransactionBase64,
     ),
@@ -823,13 +867,16 @@ function validateAttestationPlan(
 function validateAttestationStatus(
   value: LocalDevnetHarnessAttestationStatus,
   expectedCreator: string,
-  expectedPlanId: string,
-  expectedRequestId: string,
+  active: ActiveAttestationPlan,
 ): LocalDevnetHarnessAttestationStatus {
+  if (!isRecord(value)) {
+    requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+  }
   const hasSignature = Object.prototype.hasOwnProperty.call(
     value,
     "transactionSignature",
   );
+  const hasReceipt = Object.prototype.hasOwnProperty.call(value, "receipt");
   assertExactKeys(
     value,
     [
@@ -839,6 +886,7 @@ function validateAttestationStatus(
       "creatorAuthority",
       "attestationAddress",
       ...(hasSignature ? ["transactionSignature"] : []),
+      ...(hasReceipt ? ["receipt"] : []),
     ],
     "Flow response",
   );
@@ -851,8 +899,8 @@ function validateAttestationStatus(
     requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
   }
   if (
-    canonicalPlanId(value.planId) !== expectedPlanId ||
-    value.requestId !== expectedRequestId
+    canonicalPlanId(value.planId) !== active.planId ||
+    value.requestId !== active.requestId
   ) {
     requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
   }
@@ -869,15 +917,92 @@ function validateAttestationStatus(
   ) {
     requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
   }
-  const result: LocalDevnetHarnessAttestationStatus = {
+  if (
+    (value.state === "prepared" || value.state === "failed") &&
+    transactionSignature !== undefined
+  ) {
+    requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+  }
+  if ((value.state === "confirmed") !== hasReceipt) {
+    requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+  }
+  const attestationAddress = canonicalAddress(
+    value.attestationAddress,
+    "Attestation address",
+  );
+  if (attestationAddress !== active.attestationAddress) {
+    requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+  }
+
+  if (value.state === "confirmed") {
+    if (transactionSignature === undefined) {
+      requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+    }
+    let receipt: ShareableProvenanceReceiptV1;
+    try {
+      const canonicalReceipt =
+        serializeCanonicalShareableProvenanceReceiptJson(
+          value.receipt as ShareableProvenanceReceiptV1,
+        );
+      receipt = parseCanonicalShareableProvenanceReceiptJson(canonicalReceipt);
+    } catch {
+      requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+    }
+    const chain = receipt.chainReceipt;
+    if (
+      serializeCanonicalProvenanceRequestJson(receipt.request) !==
+        active.canonicalRequestJson ||
+      receipt.request.requestId !== active.requestId ||
+      chain.credentialAuthority !== expectedCreator ||
+      chain.authorizedSigner !== expectedCreator ||
+      chain.credentialName !==
+        `${CREDENTIAL_NAME_PREFIX}-${expectedCreator.slice(0, 8)}` ||
+      chain.schemaName !== SCHEMA_NAME ||
+      chain.credentialAddress !== active.credentialAddress ||
+      chain.schemaAddress !== active.schemaAddress ||
+      chain.attestationAddress !== active.attestationAddress ||
+      chain.subjectNonce !== active.subjectNonce ||
+      chain.expiryUnixSeconds !== active.expiryUnixSeconds ||
+      chain.transactions.createCredential.signature !==
+        active.createCredentialTransactionSignature ||
+      chain.transactions.createSchema.signature !==
+        active.createSchemaTransactionSignature ||
+      chain.transactions.createAttestation.signature !== transactionSignature ||
+      chain.implementation.sasLib !== SAS_LIB_IMPLEMENTATION_VERSION ||
+      chain.implementation.solanaKit !== SOLANA_KIT_IMPLEMENTATION_VERSION
+    ) {
+      requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+    }
+    return Object.freeze({
+      state: "confirmed",
+      planId: active.planId,
+      requestId: active.requestId,
+      creatorAuthority,
+      attestationAddress,
+      transactionSignature,
+      receipt,
+    });
+  }
+  if (value.state === "submitted") {
+    if (transactionSignature === undefined) {
+      requestFailure(503, "FLOW_INVALID", "The local flow returned invalid data.");
+    }
+    return Object.freeze({
+      state: "submitted",
+      planId: active.planId,
+      requestId: active.requestId,
+      creatorAuthority,
+      attestationAddress,
+      transactionSignature,
+    });
+  }
+  return Object.freeze({
     state: value.state,
-    planId: expectedPlanId,
-    requestId: expectedRequestId,
+    planId: active.planId,
+    requestId: active.requestId,
     creatorAuthority,
-    attestationAddress: canonicalAddress(value.attestationAddress, "Attestation address"),
-    ...(transactionSignature === undefined ? {} : { transactionSignature }),
-  };
-  return Object.freeze(result);
+    attestationAddress,
+  });
 }
 
 function sessionResponse(
@@ -1144,12 +1269,13 @@ export function createLocalDevnetHarnessMiddleware(
             requestFailure(409, "ACTIVE_PLAN_EXISTS", "Finish the active plan first.");
           }
           let requestSnapshot: ProvenanceRequestV1;
+          let canonicalRequestJson: string;
           try {
-            const canonicalRequest = serializeCanonicalProvenanceRequestJson(
+            canonicalRequestJson = serializeCanonicalProvenanceRequestJson(
               body.request as ProvenanceRequestV1,
             );
             requestSnapshot = parseCanonicalProvenanceRequestJson(
-              canonicalRequest,
+              canonicalRequestJson,
             );
           } catch {
             requestFailure(400, "INVALID_BODY", "The provenance request is invalid.");
@@ -1166,6 +1292,16 @@ export function createLocalDevnetHarnessMiddleware(
             kind: "attestation",
             planId: result.planId,
             requestId: result.requestId,
+            canonicalRequestJson,
+            credentialAddress: result.credentialAddress,
+            schemaAddress: result.schemaAddress,
+            attestationAddress: result.attestationAddress,
+            subjectNonce: result.subjectNonce,
+            createCredentialTransactionSignature:
+              result.createCredentialTransactionSignature,
+            createSchemaTransactionSignature:
+              result.createSchemaTransactionSignature,
+            expiryUnixSeconds: result.expiryUnixSeconds,
             completionAttempted: false,
           };
           sendJson(response, 200, result);
@@ -1197,8 +1333,7 @@ export function createLocalDevnetHarnessMiddleware(
               ),
             }),
             creator,
-            planId,
-            active.requestId,
+            active,
           );
           if (result.state === "confirmed") {
             activeSession.successfulIssuancePlanId = planId;
@@ -1225,8 +1360,7 @@ export function createLocalDevnetHarnessMiddleware(
               planId,
             }),
             creator,
-            planId,
-            active.requestId,
+            active,
           );
           if (result.state === "confirmed") {
             activeSession.successfulIssuancePlanId = planId;

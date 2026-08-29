@@ -99,7 +99,7 @@ function privacyNotice(): HTMLElement {
   copy.append(
     createElement("strong", { text: "Local means local" }),
     createElement("p", {
-      text: "Selected files are hashed in this browser. This preview has no upload, analytics, RPC connection, or server API. On the home page it locally checks the Wallet Standard registry for compatible extension metadata; account authorization still requires an explicit click. Opening a clearly labeled Explorer link is an explicit navigation to explorer.solana.com.",
+      text: "Selected files are hashed in this browser and are never uploaded. This preview has no analytics or media server. On a real receipt, Solana Devnet is contacted only after you explicitly choose the live check; opening a clearly labeled Explorer link is a separate explicit navigation to explorer.solana.com. On the home page, compatible wallet-extension metadata is detected locally and account authorization still requires a click.",
     }),
   );
   notice.append(icon, copy);
@@ -571,7 +571,7 @@ function chainEvidencePanels(
       definitionRow("SAS library version", receipt.implementation.sasLib),
       definitionRow("Solana Kit version", receipt.implementation.solanaKit),
     ],
-    "These values came from the transported canonical public receipt. This offline page has validated their structure and cross-field bindings, but has not fetched the referenced accounts.",
+    "These values came from the transported canonical public receipt. Their structure and cross-field bindings are checked before any network request; only the separate live-check result can confirm their current Devnet state.",
   );
 
   const accounts = dataPanel("SAS account evidence", [
@@ -632,9 +632,157 @@ function chainEvidencePanels(
     commitmentPanel(
       receipt.commitment,
       "Chain receipt commitment",
-      "The transported receipt claims these four values were carried by its attestation transaction. This offline page has not fetched that transaction or account.",
+      "The transported receipt claims these four values were carried by its attestation account. Treat that as a receipt claim until the separate live Devnet check passes.",
     ),
   ];
+}
+
+function chainCheckLabel(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .replaceAll("Pda", "PDA")
+    .replaceAll("Sas", "SAS")
+    .replace(/^./u, (character) => character.toUpperCase());
+}
+
+function syntheticChainCheckPanel(): HTMLElement {
+  const panel = createElement("section", { className: "panel chain-check-panel" });
+  panel.append(
+    createElement("span", { className: "status-badge", text: "Live check unavailable" }),
+    createElement("h2", { text: "Synthetic sample—no Solana request" }),
+    createElement("p", {
+      className: "muted",
+      text: "This built-in sample contains placeholder accounts and signatures, so the page will not contact an RPC endpoint for it. Open a receipt from a real confirmed proof to use live verification.",
+    }),
+  );
+  return panel;
+}
+
+function liveChainCheck(
+  receipt: VerifyFragmentV1,
+  pageSignal: AbortSignal,
+): HTMLElement {
+  const panel = createElement("section", { className: "panel chain-check-panel" });
+  panel.append(
+    createElement("span", { className: "status-badge", text: "Optional live check" }),
+    createElement("h2", { text: "Check the current Solana Devnet record" }),
+    createElement("p", {
+      className: "muted",
+      text: "Nothing is queried merely because this receipt link was opened. Only after you explicitly choose the live check does this page contact the fixed Solana Devnet RPC. That provider can see your IP address, this page's origin, and the already-public addresses and signatures being checked. Your media bytes, filename, and local path are never sent.",
+    }),
+  );
+
+  const actions = createElement("div", { className: "chain-check-actions" });
+  const check = createElement("button", {
+    className: "wallet-button",
+    text: "Check live Solana Devnet",
+  });
+  check.type = "button";
+  const cancel = createElement("button", {
+    className: "secondary-button",
+    text: "Cancel live check",
+  });
+  cancel.type = "button";
+  cancel.hidden = true;
+  actions.append(check, cancel);
+
+  const result = createElement("div", { className: "hash-result neutral" });
+  result.setAttribute("role", "status");
+  result.setAttribute("aria-live", "polite");
+  result.textContent = "Live Devnet has not been checked.";
+  const checkDetails = createElement("details", {
+    className: "chain-check-details",
+  });
+  const checkSummary = createElement("summary", {
+    text: "Show technical checks",
+  });
+  const checks = createElement("ul", { className: "chain-check-list" });
+  checkDetails.append(checkSummary, checks);
+  checkDetails.hidden = true;
+  panel.append(actions, result, checkDetails);
+
+  let activeController: AbortController | undefined;
+  const cancelActive = (): void => {
+    activeController?.abort();
+  };
+  if (pageSignal.aborted) cancelActive();
+  else pageSignal.addEventListener("abort", cancelActive, { once: true });
+  cancel.addEventListener("click", cancelActive);
+
+  check.addEventListener("click", () => {
+    activeController?.abort();
+    const controller = new AbortController();
+    activeController = controller;
+    const pageAbort = (): void => controller.abort();
+    if (pageSignal.aborted) controller.abort();
+    else pageSignal.addEventListener("abort", pageAbort, { once: true });
+
+    check.disabled = true;
+    cancel.hidden = false;
+    checkDetails.hidden = true;
+    checks.replaceChildren();
+    result.className = "hash-result working";
+    result.textContent = "Checking the fixed Solana Devnet endpoint…";
+
+    void import("../../src/verify-chain.js")
+      .then(({ verifyShareableReceiptOnDevnet }) =>
+        verifyShareableReceiptOnDevnet(receipt, { signal: controller.signal }),
+      )
+      .then((verification) => {
+        if (activeController !== controller || pageSignal.aborted) return;
+        if (verification.status === "valid") {
+          result.className = "hash-result match";
+          result.textContent = "Live Devnet verified: the current SAS accounts, relationships, signer, expiry, and exact commitment all match this receipt.";
+        } else if (verification.status === "invalid") {
+          result.className = "hash-result mismatch";
+          result.textContent = "The current Devnet record did not pass every receipt check. This may be a mismatch, an expired record, or a Devnet reset.";
+        } else if (verification.status === "cancelled") {
+          result.className = "hash-result neutral";
+          result.textContent = "Live Devnet check cancelled. The local file checker still works.";
+        } else {
+          result.className = "hash-result neutral";
+          result.textContent = "Devnet could not be checked right now. The receipt has not been marked invalid, and the local file checker still works.";
+        }
+
+        if (
+          verification.status === "valid" ||
+          verification.status === "invalid"
+        ) {
+          let passedCount = 0;
+          let totalCount = 0;
+          for (const [name, passed] of Object.entries(verification.checks)) {
+            totalCount += 1;
+            if (passed) passedCount += 1;
+            const item = createElement("li", {
+              className: passed ? "check-pass" : "check-fail",
+              text: `${passed ? "Pass" : "Fail"} · ${chainCheckLabel(name)}`,
+            });
+            checks.append(item);
+          }
+          checkSummary.textContent = `${passedCount}/${totalCount} live technical checks passed`;
+          checkDetails.hidden = false;
+        }
+      })
+      .catch(() => {
+        if (activeController !== controller || pageSignal.aborted) return;
+        result.className = "hash-result neutral";
+        result.textContent = controller.signal.aborted
+          ? "Live Devnet check cancelled. The local file checker still works."
+          : "Devnet could not be checked right now. The receipt has not been marked invalid, and the local file checker still works.";
+      })
+      .finally(() => {
+        pageSignal.removeEventListener("abort", pageAbort);
+        if (activeController !== controller) return;
+        activeController = undefined;
+        check.disabled = false;
+        cancel.hidden = true;
+      });
+  });
+
+  const limitation = createElement("p", { className: "chain-check-limitation" });
+  limitation.textContent = "The account/PDA/schema/signer/payload checks are the substantive live proof. Transaction signatures are checked as successful supporting references; this prototype does not yet decode each historical transaction to prove which instruction created each account. Receipt time is service assembly time, not an on-chain timestamp. None of these checks establishes copyright by itself.";
+  panel.append(limitation);
+  return panel;
 }
 
 function formatBytes(bytes: number): string {
@@ -819,22 +967,18 @@ function renderVerify(
     pageHeading(
       "Verifier · local hash slice",
       "Inspect the full receipt and check the exact media bytes.",
-      "This canonical receipt includes its full public request, any public creator profile, SAS accounts, and transaction evidence. Live account verification is not connected in this browser slice yet.",
+      "This canonical receipt includes its full public request, any public creator profile, SAS accounts, and transaction evidence. You can compare local media bytes without a network request, or explicitly check the current Devnet record.",
     ),
   );
   if (isOfflineDemoRequest(payload.request)) content.append(offlineDemoNotice());
   content.append(privacyNotice(), fragmentDisclosure());
 
-  const warning = createElement("div", { className: "chain-warning" });
-  warning.append(
-    createElement("strong", { text: "Chain status not checked in this slice" }),
-    createElement("p", {
-      text: "The link is canonical and internally consistent, but this page has not queried Solana. A local file match only means its bytes match the receipt's media hash; it does not establish that the referenced SAS accounts currently exist or contain this commitment.",
-    }),
-  );
+  const livePanel = isOfflineDemoRequest(payload.request)
+    ? syntheticChainCheckPanel()
+    : liveChainCheck(payload, pageSignal);
 
   content.append(
-    warning,
+    livePanel,
     dataPanel("Receipt envelope", [
       definitionRow("Receipt contract", payload.contract),
       definitionRow("Contract version", String(payload.version)),

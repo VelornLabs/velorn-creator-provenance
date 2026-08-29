@@ -20,8 +20,13 @@ import {
 
 import { sha256Hex } from "./commitment.js";
 import {
+  createShareableProvenanceReceipt,
+  parseCanonicalProvenanceRequestJson,
+  parseCanonicalShareableProvenanceReceiptJson,
   serializeCanonicalProvenanceRequestJson,
+  serializeCanonicalShareableProvenanceReceiptJson,
   type ProvenanceRequestV1,
+  type ShareableProvenanceReceiptV1,
 } from "./contracts.js";
 import {
   createLocalDevnetBroadcastCoordinator,
@@ -62,6 +67,9 @@ import {
 import {
   DEVNET_GENESIS_HASH,
   SAS_PROGRAM_ID,
+  devnetAccountUrl,
+  devnetTransactionUrl,
+  type PublicProvenanceReceipt,
 } from "./receipt.js";
 import {
   HARD_MAX_SPONSOR_REQUEST_BYTES,
@@ -99,6 +107,9 @@ const MINIMUM_SPONSOR_BALANCE_FLOOR_LAMPORTS = 5_000_000n;
 const BUDGET_WINDOW_LAMPORTS = MAX_LAMPORTS_PER_ATTESTATION;
 const BUDGET_WINDOW_ID = "local-devnet-one-shot";
 const SIGNING_LEASE_SECONDS = 5n;
+const SAS_LIB_IMPLEMENTATION_VERSION = "1.0.10" as const;
+const SOLANA_KIT_IMPLEMENTATION_VERSION = "5.5.1" as const;
+const MAX_FOUR_DIGIT_ISO_UNIX_SECONDS = 253_402_300_799n;
 
 export class LocalDevnetFlowError extends Error {
   constructor(message: string) {
@@ -156,7 +167,9 @@ interface EnrollmentAttempt {
 interface EnrollmentEvidence {
   readonly planId: string;
   readonly creatorAuthority: Address;
+  readonly credentialName: string;
   readonly credentialAddress: Address;
+  readonly schemaName: string;
   readonly schemaAddress: Address;
   /**
    * The canonical enrollment transaction is atomic and contains both SAS
@@ -173,6 +186,8 @@ interface ActiveAttestation {
   completionAttempted: boolean;
   /** Derived server-side from the exact retained final wire before broadcast. */
   transactionSignature?: Signature;
+  /** Built once after exact finalized confirmation; never from browser data. */
+  confirmedReceiptCanonicalJson?: string;
 }
 
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
@@ -196,6 +211,17 @@ function u64(value: unknown, label: string): bigint {
     fail(`${label} is not a non-negative u64 bigint`);
   }
   return value;
+}
+
+function isoUtcMillisecondsFromUnixSeconds(
+  value: unknown,
+  label: string,
+): string {
+  const seconds = u64(value, label);
+  if (seconds > MAX_FOUR_DIGIT_ISO_UNIX_SECONDS) {
+    fail(`${label} cannot be represented as a canonical ISO date-time`);
+  }
+  return new Date(Number(seconds * 1_000n)).toISOString();
 }
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -789,7 +815,9 @@ export async function createLocalDevnetFlowService(
     enrollmentEvidence = Object.freeze({
       planId: attempt.planId,
       creatorAuthority: attempt.plan.creatorAddress,
+      credentialName: revalidated.plan.credentialName,
       credentialAddress: attempt.plan.credentialAddress,
+      schemaName: revalidated.plan.schemaName,
       schemaAddress: attempt.plan.schemaAddress,
       createCredentialTransactionSignature: attempt.transactionSignature,
       createSchemaTransactionSignature: attempt.transactionSignature,
@@ -826,6 +854,174 @@ export async function createLocalDevnetFlowService(
       },
     );
     return finalizeEnrollmentAttempt(attempt, status);
+  };
+
+  const assertConfirmedReceiptBindings = (
+    receipt: ShareableProvenanceReceiptV1,
+    expectation: Readonly<{
+      canonicalRequestJson: string;
+      requestId: string;
+      creatorAuthority: Address;
+      credentialName: string;
+      credentialAddress: Address;
+      schemaName: string;
+      schemaAddress: Address;
+      nonceAddress: Address;
+      attestationAddress: Address;
+      expiryUnixSeconds: string;
+      createCredentialTransactionSignature: Signature;
+      createSchemaTransactionSignature: Signature;
+      createAttestationTransactionSignature: Signature;
+    }>,
+  ): void => {
+    const chain = receipt.chainReceipt;
+    if (
+      serializeCanonicalProvenanceRequestJson(receipt.request) !==
+        expectation.canonicalRequestJson ||
+      receipt.request.requestId !== expectation.requestId ||
+      chain.credentialAuthority !== expectation.creatorAuthority ||
+      chain.authorizedSigner !== expectation.creatorAuthority ||
+      chain.credentialName !== expectation.credentialName ||
+      chain.credentialAddress !== expectation.credentialAddress ||
+      chain.schemaName !== expectation.schemaName ||
+      chain.schemaAddress !== expectation.schemaAddress ||
+      chain.subjectNonce !== expectation.nonceAddress ||
+      chain.attestationAddress !== expectation.attestationAddress ||
+      chain.expiryUnixSeconds !== expectation.expiryUnixSeconds ||
+      chain.transactions.createCredential.signature !==
+        expectation.createCredentialTransactionSignature ||
+      chain.transactions.createSchema.signature !==
+        expectation.createSchemaTransactionSignature ||
+      chain.transactions.createAttestation.signature !==
+        expectation.createAttestationTransactionSignature ||
+      chain.implementation.sasLib !== SAS_LIB_IMPLEMENTATION_VERSION ||
+      chain.implementation.solanaKit !== SOLANA_KIT_IMPLEMENTATION_VERSION
+    ) {
+      fail("confirmed receipt is not bound to the exact request and finalized evidence");
+    }
+  };
+
+  const confirmedAttestationStatus = async (
+    active: ActiveAttestation,
+    creator: Address,
+    finalizedSignatureInput: Signature,
+  ): Promise<LocalDevnetHarnessAttestationStatus> => {
+    const finalizedSignature = canonicalSignature(
+      finalizedSignatureInput,
+      "finalized attestation signature",
+    );
+    if (active.transactionSignature !== finalizedSignature) {
+      fail("finalized attestation signature differs from the retained transaction");
+    }
+    const record =
+      (await store.inspectPlan(active.planId)) ??
+      fail("confirmed attestation disappeared from the store");
+    if (record.state !== "confirmed") {
+      fail("attestation receipt requires exact finalized confirmation");
+    }
+    const evidence =
+      enrollmentEvidence ?? fail("confirmed enrollment evidence is unavailable");
+    const plan = record.plan;
+    const request = parseCanonicalProvenanceRequestJson(
+      plan.canonicalRequestJson,
+    );
+    const expectation = Object.freeze({
+      canonicalRequestJson: plan.canonicalRequestJson,
+      requestId: active.requestId,
+      creatorAuthority: creator,
+      credentialName: evidence.credentialName,
+      credentialAddress: evidence.credentialAddress,
+      schemaName: evidence.schemaName,
+      schemaAddress: evidence.schemaAddress,
+      nonceAddress: plan.nonceAddress,
+      attestationAddress: plan.attestationAddress,
+      expiryUnixSeconds: plan.expiry.toString(),
+      createCredentialTransactionSignature:
+        evidence.createCredentialTransactionSignature,
+      createSchemaTransactionSignature:
+        evidence.createSchemaTransactionSignature,
+      createAttestationTransactionSignature: finalizedSignature,
+    });
+    if (
+      plan.planId !== active.planId ||
+      plan.requestId !== active.requestId ||
+      request.requestId !== active.requestId ||
+      plan.creatorAuthority !== creator ||
+      evidence.creatorAuthority !== creator ||
+      plan.credentialAddress !== evidence.credentialAddress ||
+      plan.schemaAddress !== evidence.schemaAddress
+    ) {
+      fail("confirmed plan is not bound to its creator, request, or enrollment");
+    }
+
+    if (active.confirmedReceiptCanonicalJson === undefined) {
+      const chainReceipt: PublicProvenanceReceipt = {
+        receiptVersion: 1,
+        network: "devnet",
+        genesisHash: DEVNET_GENESIS_HASH,
+        sasProgramId: SAS_PROGRAM_ID,
+        credentialName: evidence.credentialName,
+        schemaName: evidence.schemaName,
+        credentialAddress: evidence.credentialAddress,
+        schemaAddress: evidence.schemaAddress,
+        attestationAddress: plan.attestationAddress,
+        credentialAuthority: creator,
+        authorizedSigner: creator,
+        subjectNonce: plan.nonceAddress,
+        commitment: request.commitment,
+        expiryUnixSeconds: plan.expiry.toString(),
+        accountExplorerUrls: {
+          credential: devnetAccountUrl(evidence.credentialAddress),
+          schema: devnetAccountUrl(evidence.schemaAddress),
+          attestation: devnetAccountUrl(plan.attestationAddress),
+        },
+        transactions: {
+          createCredential: {
+            signature: evidence.createCredentialTransactionSignature,
+            explorerUrl: devnetTransactionUrl(
+              evidence.createCredentialTransactionSignature,
+            ),
+          },
+          createSchema: {
+            signature: evidence.createSchemaTransactionSignature,
+            explorerUrl: devnetTransactionUrl(
+              evidence.createSchemaTransactionSignature,
+            ),
+          },
+          createAttestation: {
+            signature: finalizedSignature,
+            explorerUrl: devnetTransactionUrl(finalizedSignature),
+          },
+        },
+        receiptWrittenAt: isoUtcMillisecondsFromUnixSeconds(
+          nowUnixSeconds(),
+          "receipt time",
+        ),
+        implementation: {
+          sasLib: SAS_LIB_IMPLEMENTATION_VERSION,
+          solanaKit: SOLANA_KIT_IMPLEMENTATION_VERSION,
+        },
+      };
+      const created = createShareableProvenanceReceipt(request, chainReceipt);
+      const canonical = serializeCanonicalShareableProvenanceReceiptJson(created);
+      const validated = parseCanonicalShareableProvenanceReceiptJson(canonical);
+      assertConfirmedReceiptBindings(validated, expectation);
+      active.confirmedReceiptCanonicalJson = canonical;
+    }
+
+    const receipt = parseCanonicalShareableProvenanceReceiptJson(
+      active.confirmedReceiptCanonicalJson,
+    );
+    assertConfirmedReceiptBindings(receipt, expectation);
+    return Object.freeze({
+      state: "confirmed",
+      planId: active.planId,
+      requestId: active.requestId,
+      creatorAuthority: creator,
+      attestationAddress: plan.attestationAddress,
+      transactionSignature: finalizedSignature,
+      receipt,
+    });
   };
 
   const service: LocalDevnetHarnessFlowService = {
@@ -1106,6 +1302,11 @@ export async function createLocalDevnetFlowService(
           credentialAddress: safePlan.credentialAddress,
           schemaAddress: safePlan.schemaAddress,
           attestationAddress: safePlan.attestationAddress,
+          subjectNonce: safePlan.nonceAddress,
+          createCredentialTransactionSignature:
+            enrollmentEvidence.createCredentialTransactionSignature,
+          createSchemaTransactionSignature:
+            enrollmentEvidence.createSchemaTransactionSignature,
           unsignedTransactionBase64: safePlan.unsignedTransactionBase64,
           messageSha256: safePlan.messageSha256,
           expiryUnixSeconds: safePlan.expiryUnixSeconds,
@@ -1157,16 +1358,11 @@ export async function createLocalDevnetFlowService(
         if (confirmed.signature !== active.transactionSignature) {
           fail("confirmed signature differs from the retained transaction");
         }
-        return Object.freeze({
-          state: "confirmed",
-          planId: active.planId,
-          requestId: active.requestId,
-          creatorAuthority: creator,
-          attestationAddress: (
-            await store.inspectPlan(active.planId)
-          )?.plan.attestationAddress ?? fail("confirmed plan disappeared"),
-          transactionSignature: confirmed.signature,
-        });
+        return confirmedAttestationStatus(
+          active,
+          creator,
+          confirmed.signature,
+        );
       });
     },
 
@@ -1220,16 +1416,35 @@ export async function createLocalDevnetFlowService(
             state = "failed";
             break;
         }
+        if (state === "confirmed") {
+          const finalizedSignature =
+            active.transactionSignature ??
+            fail("confirmed attestation is missing its retained public signature");
+          return confirmedAttestationStatus(
+            active,
+            creator,
+            finalizedSignature,
+          );
+        }
+        if (state === "submitted") {
+          const submittedSignature =
+            active.transactionSignature ??
+            fail("submitted attestation is missing its retained public signature");
+          return Object.freeze({
+            state: "submitted",
+            planId: active.planId,
+            requestId: active.requestId,
+            creatorAuthority: creator,
+            attestationAddress: record.plan.attestationAddress,
+            transactionSignature: submittedSignature,
+          });
+        }
         return Object.freeze({
           state,
           planId: active.planId,
           requestId: active.requestId,
           creatorAuthority: creator,
           attestationAddress: record.plan.attestationAddress,
-          ...((state === "submitted" || state === "confirmed") &&
-          active.transactionSignature !== undefined
-            ? { transactionSignature: active.transactionSignature }
-            : {}),
         });
       });
     },

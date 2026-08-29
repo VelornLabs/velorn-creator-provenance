@@ -39,12 +39,15 @@ bounded URL fragments. Its 6,000-byte payload cap is independent of the general
 - compares that digest with the transported commitment;
 - rejects malformed, oversized, non-canonical, or internally inconsistent
   links; and
-- clearly states that it has not queried Solana.
+- makes no Solana request on link open, then offers a separately disclosed,
+  explicit-click live check against the fixed public Devnet RPC.
 
 The ordinary public browser slice includes an optional Wallet Standard
 discovery and connection-only readiness check. It has no wallet-signing call,
-RPC connection, upload, analytics, server API, or issuance path. Its
-deterministic home-page examples are synthetic UI fixtures, not chain evidence.
+upload, analytics, server API, or issuance path. Its only RPC path is the
+explicit read-only verification action on a real receipt; media bytes,
+filenames, and local paths never enter that request. Deterministic home-page
+examples are synthetic UI fixtures and are never sent to RPC as chain evidence.
 
 A separate entry point, used only by `npm run dev:devnet`, provides the guided
 local Devnet test harness. It is pinned to `127.0.0.1:4173`, remains inert until
@@ -74,11 +77,12 @@ The SAS schema contains four compact fields:
 | `statement_type` | String | `creator_media_commitment_v1` |
 | `version` | U8 | `1` |
 
-The CLI verifier fetches credential, schema, and attestation accounts; checks
-SAS ownership and PDA/account relationships; verifies signer roles, schema
-status/shape, and expiry; decodes the payload; and can recompute both local
-commitments. This live CLI verification is separate from the current offline
-browser verifier.
+The shared live-chain verifier fetches credential, schema, and attestation
+accounts; checks SAS ownership and PDA/account relationships; verifies signer
+roles, schema status/shape, and expiry; and decodes the payload commitment. The
+CLI adds optional local-media/manifest recomputation. The browser invokes only
+the read-only chain portion after an explicit click and keeps its local byte
+comparison independent.
 
 ## Creator-first, sponsor-last policy
 
@@ -120,6 +124,12 @@ The local server uses one process, one browser session, one creator binding,
 one-shot budgets, an ignored disposable Devnet sponsor file, and in-memory
 state. Those restrictions make it useful for a bounded sprint demonstration;
 they do not make it deployable.
+
+After finalized confirmation, the flow derives one canonical shareable receipt
+from its retained canonical request and finalized enrollment/attestation
+evidence, caches it idempotently, and returns it only in the confirmed status.
+The browser cannot submit replacement receipt fields. The assembly time is
+labeled as service receipt time rather than an on-chain timestamp.
 
 Before sponsorship can be deployed, separate reviewed adapters must provide:
 

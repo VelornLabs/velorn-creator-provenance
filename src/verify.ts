@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-import { address, signature } from "@solana/kit";
 import {
-  deriveAttestationPda,
-  deriveCredentialPda,
-  deriveSchemaPda,
-  deserializeAttestationData,
+  address,
+  createSolanaRpc,
+  signature,
+} from "@solana/kit";
+import {
   fetchAttestation,
   fetchCredential,
   fetchSchema,
@@ -16,16 +16,14 @@ import {
   type MediaCommitment,
 } from "./commitment.js";
 import { assertPublicReceipt, type PublicProvenanceReceipt } from "./receipt.js";
-import { DEVNET_GENESIS_HASH, SAS_PROGRAM_ID } from "./receipt.js";
-import { createSasClient } from "./sas-client.js";
+import { DEVNET_GENESIS_HASH } from "./solana-constants.js";
 import {
-  SCHEMA_FIELD_NAMES,
-  SCHEMA_LAYOUT,
-  SCHEMA_VERSION,
-  decodeSasMediaCommitment,
-  decodeJoinedUtf8Strings,
-  decodeUtf8,
-} from "./protocol.js";
+  verifyPublicReceiptChainEvidence,
+  type ChainVerificationEvidence,
+  type ChainVerificationReadRequest,
+  type ChainVerificationTransport,
+  type SupportingSignatureStatus,
+} from "./verify-chain.js";
 
 export interface VerificationResult {
   valid: boolean;
@@ -33,19 +31,73 @@ export interface VerificationResult {
   decodedCommitment?: MediaCommitment;
 }
 
-function equalCommitments(left: MediaCommitment, right: MediaCommitment): boolean {
-  return (
-    left.mediaSha256 === right.mediaSha256 &&
-    left.manifestSha256 === right.manifestSha256 &&
-    left.statementType === right.statementType &&
-    left.version === right.version
-  );
+function createNodeRpcVerificationTransport(
+  rpcUrl: string,
+): ChainVerificationTransport {
+  const rpc = createSolanaRpc(rpcUrl);
+  return Object.freeze({
+    async readEvidence(
+      request: ChainVerificationReadRequest,
+    ): Promise<ChainVerificationEvidence> {
+      const receiptSignatures = request.supportingSignatures.map((value) =>
+        signature(value),
+      );
+      const [genesisHash, credential, schema, attestation, statusesResponse] =
+        await Promise.all([
+          rpc.getGenesisHash().send(),
+          fetchCredential(rpc, address(request.credentialAddress), {
+            commitment: "confirmed",
+          }),
+          fetchSchema(rpc, address(request.schemaAddress), {
+            commitment: "confirmed",
+          }),
+          fetchAttestation(rpc, address(request.attestationAddress), {
+            commitment: "confirmed",
+          }),
+          rpc
+            .getSignatureStatuses(receiptSignatures, {
+              searchTransactionHistory: true,
+            })
+            .send(),
+        ]);
+
+      const supportingSignatureStatuses: readonly (
+        | SupportingSignatureStatus
+        | null
+      )[] = statusesResponse.value.map((status) =>
+        status === null
+          ? null
+          : {
+              err: status.err,
+              confirmationStatus: status.confirmationStatus ?? null,
+            },
+      );
+
+      return {
+        genesisHash,
+        credential: {
+          programAddress: credential.programAddress,
+          data: credential.data,
+        },
+        schema: {
+          programAddress: schema.programAddress,
+          data: schema.data,
+        },
+        attestation: {
+          programAddress: attestation.programAddress,
+          data: attestation.data,
+        },
+        supportingSignatureStatuses,
+      };
+    },
+  });
 }
 
 export async function verifyPublicReceipt(
   receipt: PublicProvenanceReceipt,
   options: {
     rpcUrl?: string;
+    /** Retained for source compatibility; read-only verification uses no websocket. */
     websocketUrl?: string;
     mediaBytes?: Uint8Array;
     manifest?: unknown;
@@ -59,118 +111,56 @@ export async function verifyPublicReceipt(
       "Local verification requires both mediaBytes and manifest, or neither",
     );
   }
-  const client = createSasClient(
-    options.rpcUrl ?? "https://api.devnet.solana.com",
-    options.websocketUrl ?? "wss://api.devnet.solana.com",
-  );
 
-  const observedGenesisHash = await client.rpc.getGenesisHash().send();
-  if (observedGenesisHash !== DEVNET_GENESIS_HASH) {
+  const transport = createNodeRpcVerificationTransport(
+    options.rpcUrl ?? "https://api.devnet.solana.com",
+  );
+  const evidence = await transport.readEvidence({
+    credentialAddress: receipt.credentialAddress,
+    schemaAddress: receipt.schemaAddress,
+    attestationAddress: receipt.attestationAddress,
+    supportingSignatures: [
+      receipt.transactions.createCredential.signature,
+      receipt.transactions.createSchema.signature,
+      receipt.transactions.createAttestation.signature,
+    ],
+  });
+  if (evidence.genesisHash !== DEVNET_GENESIS_HASH) {
     throw new Error(
-      `Refusing to verify against a non-Devnet cluster: ${observedGenesisHash}`,
+      `Refusing to verify against a non-Devnet cluster: ${evidence.genesisHash}`,
     );
   }
 
-  const [derivedCredentialAddress] = await deriveCredentialPda({
-    authority: address(receipt.credentialAuthority),
-    name: receipt.credentialName,
-  });
-  const [derivedSchemaAddress] = await deriveSchemaPda({
-    credential: address(receipt.credentialAddress),
-    name: receipt.schemaName,
-    version: SCHEMA_VERSION,
-  });
-  const [derivedAttestationAddress] = await deriveAttestationPda({
-    credential: address(receipt.credentialAddress),
-    schema: address(receipt.schemaAddress),
-    nonce: address(receipt.subjectNonce),
-  });
-
-  const [credential, schema, attestation] = await Promise.all([
-    fetchCredential(client.rpc, address(receipt.credentialAddress), {
-      commitment: "confirmed",
-    }),
-    fetchSchema(client.rpc, address(receipt.schemaAddress), {
-      commitment: "confirmed",
-    }),
-    fetchAttestation(client.rpc, address(receipt.attestationAddress), {
-      commitment: "confirmed",
-    }),
-  ]);
-
-  const receiptSignatures = [
-    signature(receipt.transactions.createCredential.signature),
-    signature(receipt.transactions.createSchema.signature),
-    signature(receipt.transactions.createAttestation.signature),
-  ];
-  const { value: transactionStatuses } = await client.rpc
-    .getSignatureStatuses([...receiptSignatures], { searchTransactionHistory: true })
-    .send();
-
-  const decodedUnknown = deserializeAttestationData(
-    schema.data,
-    attestation.data.data as Uint8Array,
+  const chainResult = await verifyPublicReceiptChainEvidence(
+    receipt,
+    evidence,
+    BigInt(Math.floor(Date.now() / 1_000)),
   );
-  const decodedCommitment = decodeSasMediaCommitment(decodedUnknown);
-  const now = BigInt(Math.floor(Date.now() / 1000));
-
-  const checks: Record<string, boolean> = {
-    credentialPda: derivedCredentialAddress === receipt.credentialAddress,
-    schemaPda: derivedSchemaAddress === receipt.schemaAddress,
-    attestationPda: derivedAttestationAddress === receipt.attestationAddress,
-    sasProgramOwnership:
-      credential.programAddress === SAS_PROGRAM_ID &&
-      schema.programAddress === SAS_PROGRAM_ID &&
-      attestation.programAddress === SAS_PROGRAM_ID,
-    creatorRoleConsistency:
-      receipt.credentialAuthority === receipt.authorizedSigner,
-    credentialName:
-      decodeUtf8(Uint8Array.from(credential.data.name)) === receipt.credentialName,
-    credentialAuthority: credential.data.authority === receipt.credentialAuthority,
-    authorizedSigner:
-      credential.data.authorizedSigners.includes(address(receipt.authorizedSigner)) &&
-      attestation.data.signer === receipt.authorizedSigner,
-    schemaCredential: schema.data.credential === receipt.credentialAddress,
-    schemaActive: !schema.data.isPaused,
-    schemaShape:
-      decodeUtf8(Uint8Array.from(schema.data.name)) === receipt.schemaName &&
-      schema.data.version === SCHEMA_VERSION &&
-      decodeJoinedUtf8Strings(Uint8Array.from(schema.data.fieldNames)).join(",") ===
-        SCHEMA_FIELD_NAMES.join(",") &&
-      Array.from(schema.data.layout).join(",") ===
-        Array.from(SCHEMA_LAYOUT).join(","),
-    attestationCredential: attestation.data.credential === receipt.credentialAddress,
-    attestationSchema: attestation.data.schema === receipt.schemaAddress,
-    attestationNonce: attestation.data.nonce === receipt.subjectNonce,
-    attestationExpiry:
-      attestation.data.expiry === BigInt(receipt.expiryUnixSeconds) &&
-      attestation.data.expiry > now,
-    receiptCommitment: equalCommitments(decodedCommitment, receipt.commitment),
-    transactionStatuses: transactionStatuses.every(
-      (status) =>
-        status !== null &&
-        status.err === null &&
-        (status.confirmationStatus === "confirmed" ||
-          status.confirmationStatus === "finalized"),
-    ),
-  };
+  const checks: Record<string, boolean> = { ...chainResult.checks };
 
   if (options.mediaBytes !== undefined && options.manifest !== undefined) {
-    checks.localBytes = commitmentMatches(
-      decodedCommitment,
-      options.mediaBytes,
-      options.manifest,
-    );
+    checks.localBytes =
+      chainResult.decodedCommitment !== undefined &&
+      commitmentMatches(
+        chainResult.decodedCommitment,
+        options.mediaBytes,
+        options.manifest,
+      );
   }
 
+  const valid = chainResult.valid && Object.values(checks).every(Boolean);
   return {
-    valid: Object.values(checks).every(Boolean),
+    valid,
     checks,
-    decodedCommitment,
+    ...(chainResult.decodedCommitment === undefined
+      ? {}
+      : { decodedCommitment: chainResult.decodedCommitment }),
   };
 }
 
-export async function readPublicReceipt(path: string): Promise<PublicProvenanceReceipt> {
+export async function readPublicReceipt(
+  path: string,
+): Promise<PublicProvenanceReceipt> {
   const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
   assertPublicReceipt(parsed);
   return parsed;

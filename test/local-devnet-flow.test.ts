@@ -25,6 +25,8 @@ import {
   PROVENANCE_LIFECYCLE_CONTRACT,
   PROVENANCE_MANIFEST_CONTRACT,
   createProvenanceRequest,
+  serializeCanonicalProvenanceRequestJson,
+  serializeCanonicalShareableProvenanceReceiptJson,
 } from "../src/contracts.js";
 import type {
   LocalDevnetBroadcastFacade,
@@ -265,6 +267,7 @@ interface HarnessFixture {
   readonly broadcast: FlowBroadcastFixture;
   readonly flow: Awaited<ReturnType<typeof createLocalDevnetFlowService>>;
   readonly sponsorLoads: () => number;
+  readonly setNowUnixSeconds: (value: bigint) => void;
 }
 
 async function createHarness(): Promise<HarnessFixture> {
@@ -278,6 +281,7 @@ async function createHarness(): Promise<HarnessFixture> {
   const broadcast = new FlowBroadcastFixture(rpc);
   let randomCounter = 0;
   let sponsorLoadCount = 0;
+  let currentNowUnixSeconds = NOW_UNIX_SECONDS;
   const flow = await createLocalDevnetFlowService({
     rpc,
     broadcast,
@@ -285,7 +289,7 @@ async function createHarness(): Promise<HarnessFixture> {
       sponsorLoadCount += 1;
       return sponsor;
     },
-    nowUnixSeconds: () => NOW_UNIX_SECONDS,
+    nowUnixSeconds: () => currentNowUnixSeconds,
     randomBytes: (byteLength) => {
       randomCounter += 1;
       return Uint8Array.from(
@@ -303,6 +307,9 @@ async function createHarness(): Promise<HarnessFixture> {
     broadcast,
     flow,
     sponsorLoads: () => sponsorLoadCount,
+    setNowUnixSeconds: (value) => {
+      currentNowUnixSeconds = value;
+    },
   };
 }
 
@@ -427,13 +434,12 @@ test("enforces creator binding, enrollment-before-attestation, and exact state o
     creatorAuthority: fixture.creator.address,
     request: requestFor(),
   });
-  assert.equal(
-    (await fixture.flow.getAttestationStatus({
-      creatorAuthority: fixture.creator.address,
-      planId: attestation.planId,
-    })).state,
-    "prepared",
-  );
+  const prepared = await fixture.flow.getAttestationStatus({
+    creatorAuthority: fixture.creator.address,
+    planId: attestation.planId,
+  });
+  assert.equal(prepared.state, "prepared");
+  assert.equal("receipt" in prepared, false);
 });
 
 async function enrollAfterConnected(fixture: HarnessFixture) {
@@ -602,13 +608,46 @@ test("completes one exact sponsored issuance and exposes only browser-safe DTOs"
   });
   assert.equal(completed.state, "confirmed");
   assert.ok(completed.transactionSignature);
+  if (completed.state !== "confirmed") throw new Error("expected receipt");
+  assert.equal(
+    serializeCanonicalProvenanceRequestJson(completed.receipt.request),
+    serializeCanonicalProvenanceRequestJson(requestFor()),
+  );
+  assert.equal(completed.receipt.chainReceipt.credentialAuthority, fixture.creator.address);
+  assert.equal(completed.receipt.chainReceipt.authorizedSigner, fixture.creator.address);
+  assert.equal(completed.receipt.chainReceipt.credentialAddress, plan.credentialAddress);
+  assert.equal(completed.receipt.chainReceipt.schemaAddress, plan.schemaAddress);
+  assert.equal(completed.receipt.chainReceipt.attestationAddress, plan.attestationAddress);
+  assert.equal(
+    completed.receipt.chainReceipt.transactions.createCredential.signature,
+    enrollment.result.transactionSignature,
+  );
+  assert.equal(
+    completed.receipt.chainReceipt.transactions.createSchema.signature,
+    enrollment.result.transactionSignature,
+  );
+  assert.equal(
+    completed.receipt.chainReceipt.transactions.createAttestation.signature,
+    completed.transactionSignature,
+  );
+  assert.equal(completed.receipt.chainReceipt.expiryUnixSeconds, plan.expiryUnixSeconds);
+  assert.equal(
+    completed.receipt.chainReceipt.receiptWrittenAt,
+    "2033-05-18T03:33:20.000Z",
+  );
   assert.equal(fixture.broadcast.sends.length, 2);
   assert.equal(fixture.rpc.calls.sponsorReads, 1);
+  fixture.setNowUnixSeconds(NOW_UNIX_SECONDS + 86_400n);
   const status = await fixture.flow.getAttestationStatus({
     creatorAuthority: fixture.creator.address,
     planId: plan.planId,
   });
   assert.deepEqual(status, completed);
+  if (status.state !== "confirmed") throw new Error("expected cached receipt");
+  assert.equal(
+    serializeCanonicalShareableProvenanceReceiptJson(status.receipt),
+    serializeCanonicalShareableProvenanceReceiptJson(completed.receipt),
+  );
 
   const publicJson = JSON.stringify({
     service: fixture.flow,
@@ -656,6 +695,7 @@ test("an ambiguous sponsored send stays submitted and cannot issue again", async
   });
   assert.equal(status.state, "submitted");
   assert.ok(status.transactionSignature);
+  assert.equal("receipt" in status, false);
   await expectFlowRejection(
     fixture.flow.completeAttestation({
       creatorAuthority: fixture.creator.address,
@@ -696,6 +736,18 @@ test("status confirms an ambiguous send later without broadcasting again", async
   });
   assert.equal(recovered.state, "confirmed");
   assert.ok(recovered.transactionSignature);
+  if (recovered.state !== "confirmed") throw new Error("expected recovered receipt");
+  assert.equal(
+    recovered.receipt.chainReceipt.transactions.createAttestation.signature,
+    recovered.transactionSignature,
+  );
+  assert.equal(fixture.broadcast.sends.length, sendsAfterAmbiguousAttempt);
+  fixture.setNowUnixSeconds(NOW_UNIX_SECONDS + 86_400n);
+  const recoveredAgain = await fixture.flow.getAttestationStatus({
+    creatorAuthority: fixture.creator.address,
+    planId: plan.planId,
+  });
+  assert.deepEqual(recoveredAgain, recovered);
   assert.equal(fixture.broadcast.sends.length, sendsAfterAmbiguousAttempt);
 });
 
@@ -743,6 +795,7 @@ test("stops finality polling at the hard bound and retains submitted state", asy
   });
   assert.equal(status.state, "submitted");
   assert.ok(status.transactionSignature);
+  assert.equal("receipt" in status, false);
 });
 
 test("rejects using the sponsor wallet as the creator", async () => {
