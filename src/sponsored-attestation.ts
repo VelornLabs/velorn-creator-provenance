@@ -1,6 +1,6 @@
 import {
   AccountRole,
-  appendTransactionMessageInstruction,
+  appendTransactionMessageInstructions,
   assertIsTransactionWithinSizeLimit,
   compileTransaction,
   createNoopSigner,
@@ -28,6 +28,12 @@ import {
   getCreateAttestationInstruction,
   parseCreateAttestationInstruction,
 } from "sas-lib";
+import {
+  LOCAL_DEVNET_COMPUTE_BUDGET_INSTRUCTION_COUNT,
+  LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+  createPinnedLocalDevnetComputeBudgetInstructions,
+  hasExactPinnedLocalDevnetComputeBudget,
+} from "./devnet-transaction-policy.js";
 
 /**
  * NEUTRAL WIRE-SEMANTICS PRIMITIVE ONLY.
@@ -139,7 +145,16 @@ function createCanonicalMessage(
         expectation.lifetimeConstraint,
         message,
       ),
-    (message) => appendTransactionMessageInstruction(instruction, message),
+    (message) =>
+      appendTransactionMessageInstructions(
+        [
+          ...createPinnedLocalDevnetComputeBudgetInstructions(
+            LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+          ),
+          instruction,
+        ],
+        message,
+      ),
   );
 }
 
@@ -326,11 +341,23 @@ export async function decodeAndValidateSponsoredAttestationTransaction(
   if (message.feePayer.address !== expectation.sponsorPayer) {
     fail("fee payer is not the approved sponsor");
   }
-  if (message.instructions.length !== 1) {
-    fail("transaction must contain exactly one instruction");
+  if (
+    message.instructions.length !==
+    LOCAL_DEVNET_COMPUTE_BUDGET_INSTRUCTION_COUNT + 1
+  ) {
+    fail("transaction must contain exactly the pinned budget and attestation instructions");
+  }
+  if (
+    !hasExactPinnedLocalDevnetComputeBudget(
+      message.instructions,
+      LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+    )
+  ) {
+    fail("transaction compute-budget policy is unexpected");
   }
 
-  const instruction = message.instructions[0];
+  const instruction =
+    message.instructions[LOCAL_DEVNET_COMPUTE_BUDGET_INSTRUCTION_COUNT];
   if (instruction === undefined) fail("CreateAttestation instruction is missing");
   if (
     instruction.programAddress !==

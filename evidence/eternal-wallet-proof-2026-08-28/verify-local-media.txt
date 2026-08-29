@@ -1,0 +1,5 @@
+PASS localMediaSha256
+Media byte length: 8350671
+Expected SHA-256: 525b7efedc0d84f130c5a37f1ddc84cff5b7468feaa151cf9706a2601ae89fa0
+Observed SHA-256: 525b7efedc0d84f130c5a37f1ddc84cff5b7468feaa151cf9706a2601ae89fa0
+The selected media was read locally and was not copied into this evidence set.

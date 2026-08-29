@@ -34,6 +34,7 @@ import {
 } from "../src/contracts.js";
 import {
   CREDENTIAL_NAME_PREFIX,
+  SCHEMA_DESCRIPTION,
   SCHEMA_FIELD_NAMES,
   SCHEMA_LAYOUT,
   SCHEMA_NAME,
@@ -163,10 +164,10 @@ async function createFixture(): Promise<Fixture> {
     authorizedSigners: [creator.address],
   };
   const schema: Schema = {
-    discriminator: 0,
+    discriminator: 1,
     credential: credentialAddress,
     name: new TextEncoder().encode(SCHEMA_NAME),
-    description: new TextEncoder().encode("Velorn sponsor policy fixture"),
+    description: new TextEncoder().encode(SCHEMA_DESCRIPTION),
     layout: Uint8Array.from(SCHEMA_LAYOUT),
     fieldNames: encodeJoinedUtf8Strings(SCHEMA_FIELD_NAMES),
     isPaused: false,
@@ -980,6 +981,39 @@ test("mixed cluster/facts/lifetime/cost/simulation plans reject before atomic sp
         },
       }),
       error: /schema is paused/u,
+    },
+    {
+      name: "wrong schema account discriminator",
+      mutate: (context) => ({
+        ...context,
+        facts: {
+          ...context.facts,
+          schema: {
+            ...context.facts.schema,
+            data: { ...context.facts.schema.data, discriminator: 0 },
+          },
+        },
+      }),
+      error: /schema discriminator is unexpected/u,
+    },
+    {
+      name: "wrong schema description",
+      mutate: (context) => ({
+        ...context,
+        facts: {
+          ...context.facts,
+          schema: {
+            ...context.facts.schema,
+            data: {
+              ...context.facts.schema.data,
+              description: new TextEncoder().encode(
+                "altered schema description",
+              ),
+            },
+          },
+        },
+      }),
+      error: /pinned media-commitment v1 schema/u,
     },
     {
       name: "existing attestation",

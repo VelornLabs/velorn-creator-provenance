@@ -1,8 +1,11 @@
 import { assertMediaCommitment, type MediaCommitment } from "./commitment.js";
+import {
+  DEVNET_GENESIS_HASH,
+  SAS_PROGRAM_ID,
+} from "./solana-constants.js";
 
-export const SAS_PROGRAM_ID = "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG";
+export { DEVNET_GENESIS_HASH, SAS_PROGRAM_ID };
 export const DEVNET_CLUSTER = "devnet" as const;
-export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 
 export interface TransactionEvidence {
   signature: string;

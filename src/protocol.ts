@@ -6,6 +6,8 @@ import {
 export const CREDENTIAL_NAME_PREFIX = "VELORN-PROV";
 export const SCHEMA_NAME = "MEDIA-COMMITMENT";
 export const SCHEMA_VERSION = 1;
+export const SCHEMA_DESCRIPTION =
+  "Commits media and provenance-manifest hashes; does not assert copyright ownership";
 export const SCHEMA_FIELD_NAMES = [
   "media_sha256",
   "manifest_sha256",

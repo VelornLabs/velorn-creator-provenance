@@ -41,10 +41,17 @@ bounded URL fragments. Its 6,000-byte payload cap is independent of the general
   links; and
 - clearly states that it has not queried Solana.
 
-The current browser slice includes an optional Wallet Standard discovery and
-connection-only readiness check. It has no wallet-signing call, RPC connection,
-upload, analytics, server API, or issuance path. Its deterministic home-page
-examples are synthetic UI fixtures, not chain evidence.
+The ordinary public browser slice includes an optional Wallet Standard
+discovery and connection-only readiness check. It has no wallet-signing call,
+RPC connection, upload, analytics, server API, or issuance path. Its
+deterministic home-page examples are synthetic UI fixtures, not chain evidence.
+
+A separate entry point, used only by `npm run dev:devnet`, provides the guided
+local Devnet test harness. It is pinned to `127.0.0.1:4173`, remains inert until
+the user explicitly starts a session, and keeps local media bytes in the
+browser. It uses a creator-first wallet signature and a server-only disposable
+sponsor signature. That entry is never used by the normal static preview or
+production web build.
 
 ## Solana attestation baseline
 
@@ -100,19 +107,32 @@ semantic validator reused by the policy. It intentionally exports no builder or
 signature-sequencing workflow; creator-first/sponsor-last ordering belongs only
 to the policy service.
 
-## Explicit production boundary
+## Local sprint harness and production boundary
+
+The sprint harness composes reviewed, narrow reference adapters for loopback
+HTTP, Wallet Standard signing, hard-pinned Devnet reads, exact fee/rent
+simulation, sponsor-last signing, exact-wire broadcast, and finalized-status
+recovery. Each browser request is a fixed semantic operation; there is no
+arbitrary RPC, program, instruction, transfer, signing, or broadcast endpoint.
+The final sponsor-signed wire remains server-side.
+
+The local server uses one process, one browser session, one creator binding,
+one-shot budgets, an ignored disposable Devnet sponsor file, and in-memory
+state. Those restrictions make it useful for a bounded sprint demonstration;
+they do not make it deployable.
 
 Before sponsorship can be deployed, separate reviewed adapters must provide:
 
-- transaction-review, signing, and account-snapshot binding on top of the
-  connection-only Wallet Standard readiness UI;
-- authenticated HTTP request/body limits and per-IP or per-session rate limits;
+- production-grade transaction review and recovery UX rather than the local
+  guided harness;
+- authenticated public HTTP ingress and per-IP, per-session, and global rate
+  limits;
 - provisional-plan TTL cleanup, global issuance limits, and storage caps;
-- one private pinned Devnet RPC client with genesis/min-context discipline;
 - a durable transactional database implementing the reference state machine;
-- isolated sponsor secret loading and signing;
-- server-only broadcast, confirmation, non-landing reconciliation, and crash
-  recovery; and
+- managed production signing keys rather than the local file-backed disposable
+  Devnet sponsor;
+- durable server broadcast, confirmation, non-landing reconciliation, and
+  crash recovery across processes; and
 - operational monitoring and emergency budget shutdown.
 
 These are deployment blockers, not implied capabilities of the offline core.

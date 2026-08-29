@@ -1,0 +1,18 @@
+PASS credentialPda
+PASS schemaPda
+PASS attestationPda
+PASS sasProgramOwnership
+PASS creatorRoleConsistency
+PASS credentialName
+PASS credentialAuthority
+PASS authorizedSigner
+PASS schemaCredential
+PASS schemaActive
+PASS schemaShape
+PASS attestationCredential
+PASS attestationSchema
+PASS attestationNonce
+PASS attestationExpiry
+PASS receiptCommitment
+PASS transactionStatuses
+Receipt is valid against the current Devnet accounts.

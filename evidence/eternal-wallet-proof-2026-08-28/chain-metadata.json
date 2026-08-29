@@ -1,0 +1,63 @@
+{
+  "network": "devnet",
+  "genesisHash": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+  "sasProgramId": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+  "observedFinalizedSlot": 489604705,
+  "creator": {
+    "address": "FrSCbpAawSmLejtM1x5bwx8xsNpq395vjiq84u3Mxjcy",
+    "balanceBeforeEnrollmentLamports": 1000000000,
+    "balanceAfterEnrollmentLamports": 996062200,
+    "balanceBeforeAttestationLamports": 996062200,
+    "balanceAfterAttestationLamports": 996062200
+  },
+  "sponsor": {
+    "address": "UzbSgkgFy6z99U4uXWhTyaCkY2jsfwfmbyQpETkk5aR",
+    "balanceBeforeAttestationLamports": 985576714,
+    "balanceAfterAttestationLamports": 982302274
+  },
+  "transactions": {
+    "creatorEnrollment": {
+      "signature": "tm2kphUYn2aS5MB4g2h6qJn7G1hcqtzhk53dFtrUWWJZJtuqCUES6RQHY6vxK1oqe8jAEgEUYVoaB22RkRWoddP",
+      "slot": 489594579,
+      "blockTime": "2026-08-28T22:45:55Z",
+      "feeLamports": 5400,
+      "computeUnitsConsumed": 19745,
+      "error": null
+    },
+    "sponsoredAttestation": {
+      "signature": "2vSD8YQZqvR8JAPao6LDvXjwccGJqZsWV1VACn9NN7cFBmrSVNL3KKJyN3EtP4D62oumQKGQfk3tMMTeHe8zC7ZD",
+      "slot": 489595841,
+      "blockTime": "2026-08-28T22:49:24Z",
+      "feeLamports": 10200,
+      "computeUnitsConsumed": 6396,
+      "error": null
+    }
+  },
+  "accounts": {
+    "credential": {
+      "address": "AuyCUqEM2zobANdo3mpJkx8jBLxTPmG6vQ75FPEz9ePj",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 1538160,
+      "dataLength": 93
+    },
+    "schema": {
+      "address": "G6EUjJXivfjAAUYHc364ytZpBvWhD2bkajucskaU97wY",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 2394240,
+      "dataLength": 216
+    },
+    "attestation": {
+      "address": "BNA3gBtCV4WjgTzwCXZE3bTr98fqbHGfAn8emkCwdXAf",
+      "owner": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+      "lamports": 3264240,
+      "dataLength": 341
+    }
+  },
+  "commitment": {
+    "mediaSha256": "525b7efedc0d84f130c5a37f1ddc84cff5b7468feaa151cf9706a2601ae89fa0",
+    "manifestSha256": "ad62e0e719585f8e5a0914f0245dd6387680b8ec7cad25fcdd636e24dcad3c69",
+    "statementType": "creator_media_commitment_v1",
+    "version": 1,
+    "expiryUnixSeconds": "1790549345"
+  }
+}

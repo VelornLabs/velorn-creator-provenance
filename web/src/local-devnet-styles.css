@@ -1,0 +1,230 @@
+@import "./styles.css";
+
+.local-devnet-shell {
+  --border: #3b312b;
+  --panel: #171310;
+  --background: #0d0b0b;
+  --text: #fffaf4;
+  --muted: #a99b90;
+  --accent: #dc9a6d;
+  --accent-soft: #f1bd96;
+
+  min-height: 100vh;
+}
+
+.local-brand-copy {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.local-hero {
+  max-width: 780px;
+}
+
+.local-boundary {
+  margin-bottom: 1.25rem;
+}
+
+.local-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.local-progress li {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.local-progress li span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.local-progress li strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-progress li.current {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.local-progress li.done {
+  border-color: color-mix(in srgb, #7fcf97 55%, var(--border));
+  color: #b8d9c2;
+}
+
+.local-primary-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.local-primary-panel > h2,
+.local-primary-panel > p,
+.local-working > h2,
+.local-working > p {
+  margin: 0;
+}
+
+.local-primary-panel > .panel {
+  margin-top: 0.25rem;
+  background: color-mix(in srgb, var(--background) 45%, transparent);
+}
+
+.local-wallet-recovery {
+  display: grid;
+  gap: 0.7rem;
+  border-color: #8a5436;
+}
+
+.local-wallet-recovery h3,
+.local-wallet-recovery p {
+  margin: 0;
+}
+
+.local-action {
+  justify-self: start;
+  min-height: 2.75rem;
+  margin-top: 0.25rem;
+  padding-inline: 1rem;
+}
+
+.local-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.local-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.local-message {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #8a5436;
+  border-radius: 12px;
+  color: #f0c3a1;
+  background: #231812;
+}
+
+.local-message p,
+.local-caution {
+  margin: 0;
+}
+
+.local-caution {
+  padding: 0.8rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  color: #e5bea5;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.local-working {
+  position: relative;
+  display: grid;
+  gap: 0.55rem;
+  min-height: 150px;
+  align-content: center;
+  padding-left: 4rem;
+}
+
+.local-spinner {
+  position: absolute;
+  left: 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  color: transparent;
+  animation: local-spin 0.9s linear infinite;
+}
+
+.local-json {
+  overflow: hidden;
+}
+
+.local-json summary {
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+
+.local-json pre {
+  overflow: auto;
+  max-height: 360px;
+  margin: 1rem 0 0;
+  padding: 1rem;
+  border-radius: 10px;
+  color: #d7c5b9;
+  background: #090807;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.local-success {
+  border-color: #477b56;
+  background: color-mix(in srgb, #17301f 35%, var(--panel));
+}
+
+.origin-failure {
+  display: grid;
+  place-content: center;
+  gap: 0.8rem;
+  min-height: 100vh;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.origin-failure h1,
+.origin-failure p {
+  margin: 0;
+}
+
+@keyframes local-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 700px) {
+  .local-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .local-action {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .local-working {
+    padding-left: 3.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .local-spinner {
+    animation: none;
+  }
+}

@@ -28,6 +28,10 @@ import {
 
 import { createMediaCommitment } from "../src/commitment.js";
 import {
+  LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+  createPinnedLocalDevnetComputeBudgetInstructions,
+} from "../src/devnet-transaction-policy.js";
+import {
   SCHEMA_FIELD_NAMES,
   SCHEMA_LAYOUT,
   SCHEMA_NAME,
@@ -118,9 +122,15 @@ function buildUnsignedTransaction(
   });
   const mutatedInstruction =
     options.mutateInstruction?.(instruction) ?? instruction;
-  const instructions = options.duplicateInstruction
+  const sasInstructions = options.duplicateInstruction
     ? [mutatedInstruction, mutatedInstruction]
     : [mutatedInstruction];
+  const instructions = [
+    ...createPinnedLocalDevnetComputeBudgetInstructions(
+      LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+    ),
+    ...sasInstructions,
+  ];
   if (options.version === 0) {
     const message = pipe(
       createTransactionMessage({ version: 0 }),
@@ -491,7 +501,7 @@ test("semantic validation rejects structural privilege, program, and instruction
     },
     {
       name: "extra instruction",
-      error: /exactly one instruction/u,
+      error: /exactly the pinned budget and attestation instructions/u,
       transaction: () =>
         buildUnsignedTransaction(fixture.expectation, {
           duplicateInstruction: true,

@@ -26,6 +26,7 @@ The on-chain record proves that a particular Solana signer made a commitment to 
 - Do not use a real wallet or real funds with this proof of concept.
 - `artifacts/` is ignored because receipts are run-specific. A receipt contains public information only.
 - A sanitized receipt from the canonical successful Devnet run is preserved in [`evidence/`](evidence/DEVNET_PROOF.md); it contains public chain data only.
+- The first complete browser-wallet and separately sponsored Devnet proof is preserved in [`evidence/eternal-wallet-proof-2026-08-28/`](evidence/eternal-wallet-proof-2026-08-28/README.md). Its receipt was reconstructed from finalized public records because the guided harness did not yet export one automatically.
 - The fixture provenance statement is a deterministic stand-in for future C2PA integration; it is not presented as a valid C2PA manifest.
 - Dependency versions are pinned to the latest stable SAS 1.x client used by Solana Foundation's pre-breaking TypeScript example. The current SAS 2.x client is still published as a beta.
 - The PoC uses a 365-day expiry so the verifier exercises explicit expiry handling. Choosing a durable production lifecycle is funded design work, not a claim made by this demo.
@@ -70,6 +71,36 @@ placeholder accounts and signatures and are **not chain evidence**. Select
 `fixtures/sample-export.txt` in either sample route to see the expected local
 hash match; changing one byte produces a mismatch.
 
+## Local Devnet guided harness
+
+The Eternal sprint also includes a separate, deliberately local-only guided
+test harness:
+
+```bash
+npm run dev:devnet
+```
+
+This is **not** the ordinary public preview. It is bound to exactly
+`http://127.0.0.1:4173`, uses a hard-pinned Solana Devnet RPC endpoint and SAS
+program, and loads the ignored disposable sponsor from
+`.local/devnet-payer.json` inside the Node process. It cannot be built or
+previewed as a deployable site. The browser receives only fixed semantic plans
+and creator-unsigned transaction bytes; it never receives the sponsor secret or
+the final sponsor-signed transaction.
+
+Nothing happens merely by opening the page. Each network step and each Phantom
+request requires an explicit action after a visible review. The selected
+creator account pays Devnet-only network fees and rent-exempt account deposits
+for its one-time credential/schema enrollment; the disposable sponsor pays the
+later attestation fee and account deposit. Use only a disposable or test-mode
+Phantom account with a small Devnet balance. Never use Mainnet SOL, import the
+local sponsor seed into a browser wallet, or treat this harness as production
+infrastructure.
+
+If a confirmation response is delayed or lost, use the page's explicit status
+check. It checks the already-signed transaction and never signs, resubmits, or
+rebroadcasts it.
+
 ## Public-wire contract boundary
 
 The ordinary v1 parse/serialize functions preserve the broader published v1
@@ -90,11 +121,14 @@ Devnet revalidation, and atomic exact-cost reservation may a server-only sponsor
 fill its slot. Final signed wire remains server-side for a separate broadcast
 worker and is never returned by the public service result.
 
-This repository does not yet contain the production HTTP service, wallet
-transaction-review/signing UI, pinned RPC adapter, durable transactional store,
-broadcast worker, authentication/rate limits, provisional-plan cleanup, or
-reconciliation workers. The included in-memory store is an offline
-state-machine reference, not a deployable sponsorship backend. See
+This repository now contains a loopback-only HTTP harness, guided Devnet review
+and signing UI, hard-pinned Devnet adapters, exact-wire broadcast/confirmation,
+and an in-memory reference state machine for the sprint demonstration. It does
+**not** contain a production HTTP service, durable transactional store, real
+authentication or abuse controls, provisional-plan cleanup, multi-process
+leases, production secret management, operational monitoring, or long-running
+reconciliation workers. The local harness is not a deployable sponsorship
+backend. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete boundary.
 
 ## Run locally

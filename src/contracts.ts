@@ -6,6 +6,10 @@ import {
   sha256HexPortable,
 } from "./canonical-contract-runtime.js";
 import type { PublicProvenanceReceipt } from "./receipt.js";
+import {
+  DEVNET_GENESIS_HASH,
+  SAS_PROGRAM_ID,
+} from "./solana-constants.js";
 
 export const CONTRACT_VERSION = 1 as const;
 export const CREATOR_PROFILE_CONTRACT = "velorn.creator-profile" as const;
@@ -23,10 +27,6 @@ export const MAX_CONTRACT_JSON_BYTES = 64 * 1024;
 export const MAX_PUBLIC_PROFILE_URL_CHARACTERS = 2_048;
 
 const DEVNET_CLUSTER = "devnet" as const;
-const DEVNET_GENESIS_HASH =
-  "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG" as const;
-const SAS_PROGRAM_ID =
-  "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG" as const;
 const COMMITMENT_VERSION = 1 as const;
 const STATEMENT_TYPE = "creator_media_commitment_v1" as const;
 

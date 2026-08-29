@@ -1,7 +1,7 @@
 import {
   address,
   blockhash,
-  appendTransactionMessageInstruction,
+  appendTransactionMessageInstructions,
   assertIsFullySignedTransaction,
   assertIsSendableTransaction,
   assertIsTransactionWithinSizeLimit,
@@ -32,6 +32,10 @@ import {
   type Credential,
   type Schema,
 } from "sas-lib";
+import {
+  LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+  createPinnedLocalDevnetComputeBudgetInstructions,
+} from "./devnet-transaction-policy.js";
 
 import { sha256Hex } from "./commitment.js";
 import {
@@ -40,6 +44,7 @@ import {
 } from "./contracts.js";
 import {
   CREDENTIAL_NAME_PREFIX,
+  SCHEMA_DESCRIPTION,
   SCHEMA_FIELD_NAMES,
   SCHEMA_LAYOUT,
   SCHEMA_NAME,
@@ -760,7 +765,7 @@ function createPolicySchemaForPayload(
   credentialAddress: Address,
 ): Schema {
   return {
-    discriminator: 0,
+    discriminator: 1,
     credential: credentialAddress,
     name: new TextEncoder().encode(SCHEMA_NAME),
     description: new Uint8Array(),
@@ -802,7 +807,7 @@ function expectedAttestationAccountSpace(
 ): number {
   try {
     return getAttestationEncoder().encode({
-      discriminator: 0,
+      discriminator: 2,
       nonce: plan.nonceAddress,
       credential: plan.credentialAddress,
       schema: plan.schemaAddress,
@@ -1119,7 +1124,16 @@ async function buildCanonicalUnsignedTransaction(
         expectation.lifetimeConstraint,
         candidate,
       ),
-    (candidate) => appendTransactionMessageInstruction(instruction, candidate),
+    (candidate) =>
+      appendTransactionMessageInstructions(
+        [
+          ...createPinnedLocalDevnetComputeBudgetInstructions(
+            LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
+          ),
+          instruction,
+        ],
+        candidate,
+      ),
   );
   const transaction = compileTransaction(message);
   await decodeAndValidateSponsoredAttestationTransaction(
@@ -1425,7 +1439,7 @@ function validateConfirmedFactsAndPayload(
   }
 
   const schema = facts.schema.data;
-  if (schema.discriminator !== 0) {
+  if (schema.discriminator !== 1) {
     fail("schema discriminator is unexpected");
   }
   if (schema.credential !== plan.credentialAddress) {
@@ -1433,15 +1447,18 @@ function validateConfirmedFactsAndPayload(
   }
   if (schema.isPaused) fail("schema is paused");
   let schemaName: string;
+  let schemaDescription: string;
   let fieldNames: string[];
   try {
     schemaName = decodeUtf8(Uint8Array.from(schema.name));
+    schemaDescription = decodeUtf8(Uint8Array.from(schema.description));
     fieldNames = decodeJoinedUtf8Strings(Uint8Array.from(schema.fieldNames));
   } catch {
-    fail("schema name or field names are not canonical UTF-8");
+    fail("schema name, description, or field names are not canonical UTF-8");
   }
   if (
     schemaName !== SCHEMA_NAME ||
+    schemaDescription !== SCHEMA_DESCRIPTION ||
     schema.version !== SCHEMA_VERSION ||
     !stringArraysEqual(fieldNames, SCHEMA_FIELD_NAMES) ||
     !bytesEqual(schema.layout, SCHEMA_LAYOUT)

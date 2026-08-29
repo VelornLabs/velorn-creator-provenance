@@ -10,7 +10,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:devnet-web": "vite build --config vite.devnet.browser.config.ts",
     "build:web": "npm run typecheck:web && vite build --config vite.config.ts",
+    "dev:devnet": "npm run build:devnet-web && vite --config vite.devnet.config.ts",
     "dev:web": "vite --config vite.config.ts",
     "preview:web": "vite preview --config vite.config.ts",
     "test": "tsx --test test/*.test.ts",
