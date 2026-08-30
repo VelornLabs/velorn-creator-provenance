@@ -8,7 +8,6 @@ import {
   serializeCanonicalShareableProvenanceReceiptJson,
   type CreatorProvenanceManifestV1,
   type ProvenanceRequestV1,
-  type ShareableProvenanceReceiptV1,
 } from "../../src/contracts.js";
 import { hashBlobSha256, type HashBlobOptions } from "./browser-hash.js";
 import { signDevnetLegacyTransaction } from "./devnet-wallet-signing.js";
@@ -22,10 +21,9 @@ import {
   DevnetWalletConnection,
   type DevnetWalletSnapshot,
 } from "./wallet-standard.js";
-import { encodeVerifyFragment } from "./fragment-contract.js";
+import { publicVerifierUrl } from "./public-verifier-url.js";
 
 export const LOCAL_DEVNET_UI_ORIGIN = "http://127.0.0.1:4173" as const;
-export const LOCAL_PUBLIC_VERIFIER_ORIGIN = "http://127.0.0.1:5173" as const;
 
 type EnrollmentPlan = Awaited<
   ReturnType<LocalDevnetHarnessClient["planEnrollment"]>
@@ -153,12 +151,6 @@ export function devnetAccountExplorerUrl(value: string): string {
 
 export function devnetTransactionExplorerUrl(value: string): string {
   return `https://explorer.solana.com/tx/${encodeURIComponent(value)}?cluster=devnet`;
-}
-
-export function localPublicVerifierUrl(
-  receipt: ShareableProvenanceReceiptV1,
-): string {
-  return `${LOCAL_PUBLIC_VERIFIER_ORIGIN}/${encodeVerifyFragment(receipt)}`;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -1156,7 +1148,7 @@ class LocalDevnetUi {
     if (status?.state === "confirmed") {
       const receiptPanel = element("section", { className: "panel local-receipt-panel" });
       receiptPanel.append(
-        element("span", { className: "status-badge", text: "Portable public receipt" }),
+        element("span", { className: "status-badge", text: "Shareable public receipt" }),
         element("h2", { text: "Verify the same media independently" }),
         element("p", {
           className: "muted",
@@ -1166,16 +1158,16 @@ class LocalDevnetUi {
       try {
         const verifier = element("a", {
           className: "primary-link local-verifier-link",
-          text: "Open the local verifier",
+          text: "Open public verifier",
         });
-        verifier.href = localPublicVerifierUrl(status.receipt);
+        verifier.href = publicVerifierUrl(status.receipt);
         verifier.target = "_blank";
         verifier.rel = "noopener noreferrer";
         receiptPanel.append(
           verifier,
           element("p", {
             className: "local-verifier-note",
-            text: "This opens the separate public preview at 127.0.0.1:5173. That localhost link is for this development checkpoint and is not yet a public share URL.",
+            text: "This shareable public receipt opens only after you click. Nothing opens or copies automatically. Your media stays on this device and is never uploaded. The #verify/v1 fragment carries the opted-in public receipt fields; it is readable, not encrypted, and may be retained in browser history, synced history, clipboard tools, or extensions.",
           }),
         );
       } catch {

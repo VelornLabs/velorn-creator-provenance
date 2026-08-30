@@ -75,6 +75,31 @@ placeholder accounts and signatures and are **not chain evidence**. Select
 `fixtures/sample-export.txt` in either sample route to see the expected local
 hash match; changing one byte produces a mismatch.
 
+## Public verifier hosting
+
+The canonical deployment target for the static verifier is
+[`https://velornlabs.github.io/velorn-creator-provenance/`](https://velornlabs.github.io/velorn-creator-provenance/).
+Before the first deployment, a repository administrator must enable GitHub
+Pages with **GitHub Actions** as its source; the branch workflow cannot enable
+Pages with its limited token.
+GitHub Pages receives only the built `dist/web` files. That public artifact does
+not include the local Devnet harness, wallet-signing code, sponsor service,
+secrets, or a media-upload path. A visitor can inspect a transported receipt and
+hash a candidate file locally without connecting a wallet.
+
+Receipt data follows `#verify/v1/` in the URL fragment. Browsers do not send that
+fragment to GitHub Pages as part of the page request, but the fragment is still
+readable information—not a secret. The recipient, browser history, synced
+history, clipboard tools, or installed extensions may retain it. Opening the
+link performs no chain request; the only network verification is a separately
+labeled, explicit-click, read-only query to the fixed Solana Devnet RPC.
+
+For this isolated sprint checkpoint, `codex/eternal-sprint` is the temporary
+Pages deployment source while the work is reviewed. Moving publication to the
+default branch is a later, deliberate repository change. The GitHub Pages URL
+is sufficient for the sprint; a custom domain can be added later without
+changing the receipt contract.
+
 ## Local Devnet guided harness
 
 The Eternal sprint also includes a separate, deliberately local-only guided

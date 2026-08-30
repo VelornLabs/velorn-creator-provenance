@@ -56,6 +56,37 @@ browser. It uses a creator-first wallet signature and a server-only disposable
 sponsor signature. That entry is never used by the normal static preview or
 production web build.
 
+## Public static hosting boundary
+
+The public verifier's canonical deployment target is
+[`https://velornlabs.github.io/velorn-creator-provenance/`](https://velornlabs.github.io/velorn-creator-provenance/).
+The repository owner must enable Pages with **GitHub Actions** as its source
+before the first deployment; the least-privilege branch workflow does not
+self-enable repository Pages settings.
+The Pages artifact is limited to `dist/web`: the static browser application and
+its assets. It does not publish the loopback Devnet harness, wallet-signing
+flow, sponsor service, private keys or other secrets, or any media-upload
+endpoint. The public build can discover a compatible wallet for the optional
+connection-only readiness check, but it cannot request a wallet signature or
+send a transaction.
+
+Shareable receipt data is transported after `#verify/v1/`. The URL fragment is
+not included in the HTTP request sent to GitHub Pages, so GitHub does not need
+the receipt to serve the verifier shell. The fragment remains readable to the
+recipient and to software with access to the full URL, including browser or
+synced history, clipboard tools, and extensions. It must therefore contain
+only intentionally public receipt fields. Loading the shell and decoding the
+fragment are offline operations. A live check occurs only after the visitor
+selects the clearly labeled action, and that action performs read-only queries
+against the fixed Solana Devnet RPC.
+
+During the isolated sprint review, the Pages workflow uses
+`codex/eternal-sprint` as its temporary deployment source. Publication can move
+to the default branch after review; that transition is not implied by the
+prototype. The repository-scoped Pages address is the canonical sprint URL,
+while a custom domain remains an optional later hosting choice and does not
+alter the fragment or receipt formats.
+
 ## Solana attestation baseline
 
 The verified baseline uses the deployed Solana Attestation Service program on

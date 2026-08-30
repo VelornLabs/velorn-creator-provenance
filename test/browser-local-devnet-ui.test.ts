@@ -2,10 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { createOfflineDemoFragments } from "../web/src/demo-fixtures.js";
+import { parseAppFragment } from "../web/src/fragment-contract.js";
+import {
+  PUBLIC_VERIFIER_BASE_URL,
+  publicVerifierUrl,
+} from "../web/src/public-verifier-url.js";
+
 const source = await readFile("web/src/local-devnet-main.ts", "utf8");
 const clientSource = await readFile("web/src/local-devnet-client.ts", "utf8");
 const bootstrapSource = await readFile(
   "web/src/local-devnet-bootstrap.ts",
+  "utf8",
+);
+const verifierUrlSource = await readFile(
+  "web/src/public-verifier-url.ts",
   "utf8",
 );
 const styles = await readFile("web/src/local-devnet-styles.css", "utf8");
@@ -84,26 +95,55 @@ test("Explorer links are fixed to Solana Devnet", () => {
   );
 });
 
-test("a finalized proof exposes a canonical receipt and fixed local verifier link", () => {
+test("a finalized proof exposes a canonical receipt and fixed public verifier link", () => {
   assert.match(
-    source,
-    /LOCAL_PUBLIC_VERIFIER_ORIGIN = "http:\/\/127\.0\.0\.1:5173" as const/u,
+    verifierUrlSource,
+    /PUBLIC_VERIFIER_BASE_URL =\s+"https:\/\/velornlabs\.github\.io\/velorn-creator-provenance\/" as const/u,
   );
-  assert.match(source, /encodeVerifyFragment\(receipt\)/u);
+  assert.match(
+    verifierUrlSource,
+    /new URL\(\s+encodeVerifyFragment\(receipt\),\s+PUBLIC_VERIFIER_BASE_URL,\s+\)\.href/u,
+  );
+  assert.match(source, /import \{ publicVerifierUrl \} from "\.\/public-verifier-url\.js"/u);
+  assert.doesNotMatch(`${source}\n${verifierUrlSource}`, /127\.0\.0\.1:5173/u);
   const confirmed = section(
     "  #renderConfirmed(): HTMLElement",
     "\n}\n\nfunction renderOriginFailure",
   );
   assert.match(confirmed, /status\?\.state === "confirmed"/u);
   assert.match(confirmed, /status\.receipt/u);
-  assert.match(confirmed, /Open the local verifier/u);
+  assert.match(confirmed, /Shareable public receipt/u);
+  assert.match(confirmed, /Open public verifier/u);
   assert.match(confirmed, /target = "_blank"/u);
   assert.match(confirmed, /noopener noreferrer/u);
   assert.match(confirmed, /serializeCanonicalShareableProvenanceReceiptJson/u);
   assert.match(confirmed, /too large for a safe URL fragment/u);
-  assert.match(confirmed, /not yet a public share URL/u);
+  assert.match(confirmed, /Nothing opens or copies automatically/u);
+  assert.match(confirmed, /media stays on this device and is never uploaded/u);
+  assert.match(confirmed, /#verify\/v1 fragment/u);
+  assert.match(confirmed, /readable, not encrypted/u);
   assert.match(confirmed, /never the media file, filename, local path, prompt, private key, or sponsor secret/u);
-  assert.doesNotMatch(confirmed, /window\.open|clipboard|click\(\)/u);
+  assert.doesNotMatch(
+    confirmed,
+    /window\.open|navigator\.clipboard|clipboard\.write|\.click\(\)/u,
+  );
+});
+
+test("the shareable verifier URL preserves the canonical receipt hash route", () => {
+  const fragments = createOfflineDemoFragments();
+  const original = parseAppFragment(fragments.verify);
+  assert.equal(original.route, "verify");
+  if (original.route !== "verify") return;
+
+  const verifierUrl = new URL(publicVerifierUrl(original.payload));
+  assert.equal(
+    PUBLIC_VERIFIER_BASE_URL,
+    "https://velornlabs.github.io/velorn-creator-provenance/",
+  );
+  assert.equal(verifierUrl.origin, "https://velornlabs.github.io");
+  assert.equal(verifierUrl.pathname, "/velorn-creator-provenance/");
+  assert.equal(verifierUrl.hash, fragments.verify);
+  assert.deepEqual(parseAppFragment(verifierUrl.hash), original);
 });
 
 test("mount is inert until the explicit Start action", () => {

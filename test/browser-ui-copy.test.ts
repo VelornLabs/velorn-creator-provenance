@@ -40,6 +40,9 @@ test("home route describes the full public request and receipt payloads", () => 
   const home = sourceSection("function renderHome", "function definitionRow");
   assert.match(home, /full canonical public request/u);
   assert.match(home, /full canonical public receipt/u);
+  assert.match(home, /does not issue receipts or request wallet signatures/u);
+  assert.match(home, /verification is read-only/u);
+  assert.match(home, /only after you explicitly click/u);
   assert.doesNotMatch(
     home,
     /reveals the exact hashes and network that would become public/u,

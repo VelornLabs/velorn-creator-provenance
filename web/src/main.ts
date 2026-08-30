@@ -365,7 +365,7 @@ function renderHome(content: HTMLElement, pageSignal: AbortSignal): void {
   boundary.append(
     createElement("h2", { text: "What this preview does not claim" }),
     createElement("p", {
-      text: "A matching hash is not proof of copyright, identity, originality, permission, or truth. Wallet signing and live Solana Attestation Service verification are intentionally not connected in this slice.",
+      text: "A matching hash is not proof of copyright, identity, originality, permission, or truth. This public verifier does not issue receipts or request wallet signatures. Live Solana Attestation Service verification is read-only and runs only after you explicitly click its check.",
     }),
     createElement("p", {
       text: "The two sample links above are deterministic offline UI fixtures. Their placeholder accounts and signatures are not evidence of any on-chain attestation.",
