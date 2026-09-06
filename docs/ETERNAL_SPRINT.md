@@ -53,6 +53,67 @@ part of the challenge without its normal review process.
 - Reject malformed links, the wrong cluster, and an unexpected schema.
 - Deploy a public preview and record the first one-minute progress update.
 
+## Week 2 creator-paid issuer
+
+The public Week 2 issuer removes the local sponsor dependency from the hosted
+path. Opening a public issue link remains inert. The page must first prove an
+exact local byte match, then expose separate explicit clicks for wallet
+connection, transaction preparation, public review, and signing.
+
+The reviewed transaction is one atomic creator-paid Devnet transaction that
+creates a proof-scoped SAS credential, schema, and attestation. The creator pays
+the Devnet transaction fee and rent-exempt deposits for all three accounts in
+Devnet SOL. The hosted page has no media upload, application server, embedded
+private key, or gas sponsor.
+
+After wallet signing, the page derives the transaction signature embedded in
+the signed wire and its SHA-256 digest. Immediately before it sends that exact
+wire with the prepared `minContextSlot`, it adds a public status record to a
+bounded canonical same-origin store. The store holds at most eight records
+keyed by request binding and never retains the raw wire.
+
+All store operations are serialized with browser Web Locks and issuance fails
+closed if safe coordination is unavailable. Clearing is a per-record
+compare-and-clear. Unresolved records are not deleted based only on wall-clock
+age, while finalized records remain until explicit clear or durable handoff.
+An unsuccessful or absent attempt is safe to retry only after finalized
+blockhash invalidity and an account-absence read anchored at least to that
+blockhash response context.
+Reload recovery checks the derived signature and never signs, sends, resubmits,
+or rebroadcasts. The stored request-wallet-transaction correlations are public
+and readable to same-origin scripts and people with access to the browser
+profile.
+
+After finality, recovery fetches the signed transaction bytes from the fixed
+RPC, matches their saved digest, reconstructs the exact request plan, and
+revalidates the instructions and creator signature. Only then does that one
+transaction signature fill all three creation references in the canonical v1
+receipt, because the same atomic transaction created all three accounts.
+
+Proof-scoped credentials keep that receipt evidence self-contained. They cost
+more rent than a reusable creator credential/schema; reusable identity is a
+future history/indexing or receipt-version design problem, not a shortcut for
+this sprint. The resulting receipt remains a wallet assertion about exact bytes
+and is not copyright, ownership, identity, originality, permission, or truth
+proof.
+
+## September 6 acceptance evidence
+
+The local production build completed the creator-paid flow with Phantom:
+one atomic transaction finalized, all 29 live verifier checks passed, and the
+same exported MP4 matched independently in the verifier. The exact public
+receipt and reproducible link are preserved in
+[`evidence/eternal-creator-paid-proof-2026-09-06`](../evidence/eternal-creator-paid-proof-2026-09-06/README.md).
+An expired unsigned quote was rejected before signing; the subsequent refresh
+UX now offers a direct refresh action and returns to review without signing.
+
+The isolated desktop export handoff already produced the request used in this
+run. Next product work is the optional public creator profile and
+contact-for-hire experience, followed by external creator/developer feedback.
+Hosted receipt verification and hosted wallet issuance must be reported as
+separate checks; the local wallet run does not prove the hosted origin's wallet
+flow. See the runbook for the publication smoke check.
+
 ## Explicitly outside this sprint
 
 No token, marketplace, payments, escrow, Mainnet launch, Nosana integration,

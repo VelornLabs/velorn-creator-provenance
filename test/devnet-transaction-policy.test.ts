@@ -9,6 +9,7 @@ import {
 } from "@solana-program/compute-budget";
 
 import {
+  LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT,
   LOCAL_DEVNET_COMBINED_ENROLLMENT_COMPUTE_UNIT_LIMIT,
   LOCAL_DEVNET_COMPUTE_UNIT_PRICE_MICROLAMPORTS,
   LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT,
@@ -39,6 +40,26 @@ test("pins an explicit tiny priority fee so wallets preserve reviewed bytes", ()
     hasExactPinnedLocalDevnetComputeBudget(
       instructions,
       LOCAL_DEVNET_COMBINED_ENROLLMENT_COMPUTE_UNIT_LIMIT,
+    ),
+    true,
+  );
+});
+
+test("permits the pinned three-instruction atomic proof compute tier", () => {
+  const instructions = createPinnedLocalDevnetComputeBudgetInstructions(
+    LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT,
+  );
+  const limit = parseSetComputeUnitLimitInstruction(
+    instructions[0]! as ReturnType<typeof getSetComputeUnitLimitInstruction>,
+  );
+  assert.equal(
+    limit.data.units,
+    LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT,
+  );
+  assert.equal(
+    hasExactPinnedLocalDevnetComputeBudget(
+      instructions,
+      LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT,
     ),
     true,
   );

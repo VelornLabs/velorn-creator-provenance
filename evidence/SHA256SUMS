@@ -3,3 +3,7 @@ b284a16fc7aac163f96c78f7994fe4e7708c2f6edeaa65e4d8e1013bc138a6d1  evidence/chain
 3eb3909aaa5302212dba16d2b2936a7b783964291e0eed716f8b282fb068cd3a  evidence/verify-local.txt
 f24204e5f7a75d5d95a3f6b4357becf64b014e1f85cfc3bf3f9b19e2f3e8c573  fixtures/sample-export.txt
 05dee66f2d1709664bdcb38b955472b4ad893753154f50f0a127a51b86d36b73  fixtures/sample-provenance-manifest.json
+1a7901cd7e3cf98e4c51ab845e8fb916d7884bd3f64a926d8f6a5c65b5f1795a  evidence/eternal-creator-paid-proof-2026-09-06/README.md
+f26274b5d8c7fc7f2478048316688f98016e6603de1392e68f8436837493a829  evidence/eternal-creator-paid-proof-2026-09-06/public-receipt.json
+840307ccbc4ebcac4c0413fb6c45543d87017d3a49d4d26ca51db605e66f8117  evidence/eternal-creator-paid-proof-2026-09-06/verification.json
+fffbd6313775a5215e03829dadd4d9a0489e87949f75d98cf454e8277bc99986  evidence/eternal-creator-paid-proof-2026-09-06/verifier-url.txt

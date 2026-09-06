@@ -343,6 +343,44 @@ h2 {
   padding: 28px;
 }
 
+.issuer-host {
+  margin-top: 18px;
+}
+
+.issuer-host > .panel,
+.issuer-host > .boundary-card,
+.issuer-host > .error-card {
+  margin-top: 0;
+}
+
+.issuer-panel {
+  border-color: #4b3d34;
+}
+
+.issuer-details {
+  min-width: 0;
+}
+
+.issuer-actions {
+  align-items: center;
+  margin-top: 20px;
+}
+
+.issuer-actions .secondary-button,
+.issuer-actions .secondary-link,
+.issuer-actions .primary-link {
+  margin-top: 0;
+}
+
+.issuer-disclosure {
+  margin: 18px 0 0;
+  padding: 15px 17px;
+  border-left: 3px solid #9b6a47;
+  color: #c6aa93;
+  background: #1c1612;
+  line-height: 1.55;
+}
+
 .definition-list {
   margin: 20px 0 0;
 }

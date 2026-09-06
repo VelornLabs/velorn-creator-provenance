@@ -25,11 +25,33 @@ until this one-time gate is complete.
 
 GitHub Pages then publishes only `dist/web` at
 [`https://velornlabs.github.io/velorn-creator-provenance/`](https://velornlabs.github.io/velorn-creator-provenance/).
-It does not publish or run the local Devnet harness, wallet signing, sponsor
-service, secrets, or a media-upload endpoint. During this isolated checkpoint,
+It does not publish or run the local Devnet harness, sponsor service, secrets,
+or a media-upload endpoint. The Week 2 static issuer asks the external wallet
+for a signature only after local media verification and explicit review and
+approval. During this isolated checkpoint,
 `codex/eternal-sprint` is the temporary deployment source pending review; moving
 the source to the default branch is a separate follow-up. A custom domain is
 optional and is not required for verification.
+
+## Week 2 smoke and review
+
+The September 6 local-production browser run is recorded in
+[`evidence/eternal-creator-paid-proof-2026-09-06`](../evidence/eternal-creator-paid-proof-2026-09-06/README.md).
+It covers an expired quote rejected before signing, a refreshed quote, one
+Phantom approval, finality, all 29 verifier checks, and a matching local MP4.
+
+If a reviewed transaction expires before signing, choose **Refresh transaction**.
+This obtains a fresh blockhash, repeats the account, balance, fee and simulation
+checks, and returns to review. Read the updated cost and expiry, then approve
+separately. Refreshing never signs or submits. An attempt already saved for
+recovery must instead use the status-check flow; it must never be refreshed
+into a second send.
+
+After publication, open the preserved receipt using the public Pages URL and
+choose **Check live Solana Devnet**. Select the original MP4 locally to confirm
+its hash again. This verifies the deployed receipt path without creating a new
+transaction. Testing issuance itself from the hosted origin requires a separate
+user-approved wallet run and is distinct from this read-only deployment check.
 
 A `#verify/v1/` receipt fragment is not sent to GitHub Pages in the HTTP page
 request, but it is readable by the recipient and may remain in browser or

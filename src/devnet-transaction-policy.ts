@@ -13,6 +13,7 @@ import type { AccountMeta, Instruction, ReadonlyUint8Array } from "@solana/kit";
  */
 export const LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT = 200_000;
 export const LOCAL_DEVNET_COMBINED_ENROLLMENT_COMPUTE_UNIT_LIMIT = 400_000;
+export const LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT = 600_000;
 export const LOCAL_DEVNET_COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1_000n;
 export const LOCAL_DEVNET_COMPUTE_BUDGET_INSTRUCTION_COUNT = 2;
 
@@ -21,7 +22,8 @@ export function createPinnedLocalDevnetComputeBudgetInstructions(
 ): readonly Instruction[] {
   if (
     computeUnitLimit !== LOCAL_DEVNET_SINGLE_SAS_COMPUTE_UNIT_LIMIT &&
-    computeUnitLimit !== LOCAL_DEVNET_COMBINED_ENROLLMENT_COMPUTE_UNIT_LIMIT
+    computeUnitLimit !== LOCAL_DEVNET_COMBINED_ENROLLMENT_COMPUTE_UNIT_LIMIT &&
+    computeUnitLimit !== LOCAL_DEVNET_ATOMIC_PROOF_COMPUTE_UNIT_LIMIT
   ) {
     throw new TypeError("unsupported local Devnet compute-unit limit");
   }

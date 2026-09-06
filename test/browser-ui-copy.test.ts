@@ -40,9 +40,13 @@ test("home route describes the full public request and receipt payloads", () => 
   const home = sourceSection("function renderHome", "function definitionRow");
   assert.match(home, /full canonical public request/u);
   assert.match(home, /full canonical public receipt/u);
-  assert.match(home, /does not issue receipts or request wallet signatures/u);
+  assert.match(home, /verifier never requests wallet signatures/u);
+  assert.match(home, /creator-paid Devnet receipt/u);
+  assert.match(home, /exact local match/u);
+  assert.match(home, /explicit review/u);
+  assert.match(home, /explicit wallet approval/u);
   assert.match(home, /verification is read-only/u);
-  assert.match(home, /only after you explicitly click/u);
+  assert.match(home, /only after you click/u);
   assert.doesNotMatch(
     home,
     /reveals the exact hashes and network that would become public/u,
@@ -77,10 +81,15 @@ test("the home route mounts and disposes the optional wallet readiness check", (
   );
 });
 
-test("issue copy scopes wallet discovery claims to the issue route", () => {
+test("issue route keeps issuance locked behind an exact local match", () => {
   const issue = sourceSection("function renderIssue", "function renderVerify");
-  assert.match(issue, /This issue page does not show the wallet readiness panel/u);
-  assert.doesNotMatch(issue, /browser slice does not discover a wallet/u);
+  assert.match(issue, /Exact media verification unlocks Devnet issuance/u);
+  assert.match(issue, /Only a green exact-byte match can reveal/u);
+  assert.match(issue, /Opening this link alone does nothing/u);
+  assert.match(issue, /handleMatchChange/u);
+  assert.match(issue, /import\("\.\/public-issuer\.js"\)/u);
+  assert.match(issue, /issuerController\?\.abort\(\)/u);
+  assert.match(issue, /This sample cannot issue a transaction/u);
 });
 
 test("real receipt verification is explicit, fixed to Devnet, and keeps media local", () => {

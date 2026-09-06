@@ -99,7 +99,7 @@ function privacyNotice(): HTMLElement {
   copy.append(
     createElement("strong", { text: "Local means local" }),
     createElement("p", {
-      text: "Selected files are hashed in this browser and are never uploaded. This preview has no analytics or media server. On a real receipt, Solana Devnet is contacted only after you explicitly choose the live check; opening a clearly labeled Explorer link is a separate explicit navigation to explorer.solana.com. On the home page, compatible wallet-extension metadata is detected locally and account authorization still requires a click.",
+      text: "Selected files are hashed in this browser and are never uploaded. This site has no analytics or media server. A real issue request can contact a compatible wallet and the fixed Solana Devnet RPC only after an exact local match and separate explicit clicks. A receipt contacts Devnet only after you choose its live check. Opening a labeled Explorer link is a separate navigation to explorer.solana.com.",
     }),
   );
   notice.append(icon, copy);
@@ -301,6 +301,9 @@ function fragmentDisclosure(): HTMLElement {
     createElement("p", {
       text: "Media bytes stay on this device, but the #issue/v1 and #verify/v1 URL fragments contain opted-in public manifest, profile, and receipt fields. They are encoded, not encrypted: sharing a link sends those fields to its recipient, and browser history, synced history, clipboard tools, or extensions may retain them.",
     }),
+    createElement("p", {
+      text: "If you approve an issue transaction, this origin also keeps a bounded public recovery record linking the request hash, public wallet, proof accounts, and transaction signature until you explicitly clear it. Other scripts on this same origin, or someone with access to this browser profile, may read that correlation data; no media bytes or raw signed transaction are stored.",
+    }),
   );
   notice.append(icon, copy);
   return notice;
@@ -365,7 +368,7 @@ function renderHome(content: HTMLElement, pageSignal: AbortSignal): void {
   boundary.append(
     createElement("h2", { text: "What this preview does not claim" }),
     createElement("p", {
-      text: "A matching hash is not proof of copyright, identity, originality, permission, or truth. This public verifier does not issue receipts or request wallet signatures. Live Solana Attestation Service verification is read-only and runs only after you explicitly click its check.",
+      text: "A matching hash is not proof of copyright, identity, originality, permission, or truth. The verifier never requests wallet signatures. A real issue request can create a creator-paid Devnet receipt only after an exact local match, an explicit review, and an explicit wallet approval. Live receipt verification is read-only and runs only after you click its check.",
     }),
     createElement("p", {
       text: "The two sample links above are deterministic offline UI fixtures. Their placeholder accounts and signatures are not evidence of any on-chain attestation.",
@@ -800,6 +803,7 @@ function formatBytes(bytes: number): string {
 function localFileCheck(
   expectedSha256: string,
   pageSignal: AbortSignal,
+  onMatchChange?: (matches: boolean) => void,
 ): HTMLElement {
   const panel = createElement("section", { className: "panel file-panel" });
   panel.append(
@@ -855,6 +859,7 @@ function localFileCheck(
   cancel.addEventListener("click", () => controller?.abort());
   input.addEventListener("change", () => {
     controller?.abort();
+    onMatchChange?.(false);
     const file = input.files?.item(0);
     if (!file) {
       result.className = "hash-result neutral";
@@ -889,6 +894,7 @@ function localFileCheck(
           result.className = "hash-result match";
           result.textContent =
             "Exact byte match: this file has the media hash carried by the link.";
+          onMatchChange?.(true);
         } else {
           result.className = "hash-result mismatch";
           result.textContent =
@@ -932,30 +938,111 @@ function renderIssue(
   payload: IssueFragmentV1,
   pageSignal: AbortSignal,
 ): void {
+  const synthetic = isOfflineDemoRequest(payload);
   content.append(
     pageHeading(
-      "Issue request · preview only",
-      "Review what would become public.",
-      "This canonical request shows every public value in the handoff. Its manifest metadata is hash-bound to the compact commitment; it contains no media bytes, local filename, prompt, or private key.",
+      synthetic
+        ? "Issue request · synthetic preview"
+        : "Issue request · creator-paid Devnet",
+      "Review, match, then choose whether to issue.",
+      "This canonical request shows every public value in the handoff. Its manifest metadata is hash-bound to the compact commitment; it contains no media bytes, local filename, prompt, private key, or automatic wallet action.",
     ),
   );
-  if (isOfflineDemoRequest(payload)) content.append(offlineDemoNotice());
+  if (synthetic) content.append(offlineDemoNotice());
+
+  const issuerHost = createElement("div", { className: "issuer-host" });
+  let issuerController: AbortController | undefined;
+  let issuerGeneration = 0;
+  const showLockedIssuer = (): void => {
+    const locked = createElement("section", { className: "boundary-card" });
+    locked.append(
+      createElement("span", {
+        className: "status-badge",
+        text: synthetic ? "Synthetic sample" : "Local match required",
+      }),
+      createElement("h2", {
+        text: synthetic
+          ? "This sample cannot issue a transaction"
+          : "Exact media verification unlocks Devnet issuance",
+      }),
+      createElement("p", {
+        text: synthetic
+          ? "This deterministic sample is for reviewing the interface only. It never connects a wallet, requests a signature, pays a fee, or writes to Solana."
+          : "Choose the finished media above. Only a green exact-byte match can reveal the separate wallet, cost-review, approval, submission, and recovery steps. Opening this link alone does nothing.",
+      }),
+    );
+    issuerHost.replaceChildren(locked);
+  };
+  showLockedIssuer();
+
+  const handleMatchChange = (matches: boolean): void => {
+    issuerGeneration += 1;
+    const generation = issuerGeneration;
+    issuerController?.abort();
+    issuerController = undefined;
+    if (!matches || synthetic || pageSignal.aborted) {
+      showLockedIssuer();
+      return;
+    }
+
+    const controller = new AbortController();
+    issuerController = controller;
+    const abortForPage = (): void => controller.abort();
+    pageSignal.addEventListener("abort", abortForPage, { once: true });
+    controller.signal.addEventListener(
+      "abort",
+      () => pageSignal.removeEventListener("abort", abortForPage),
+      { once: true },
+    );
+    const loading = createElement("section", { className: "boundary-card" });
+    loading.append(
+      createElement("span", { className: "status-badge", text: "Exact match" }),
+      createElement("h2", { text: "Loading the opt-in Devnet issuer…" }),
+      createElement("p", {
+        text: "No wallet or network action has been requested yet.",
+      }),
+    );
+    issuerHost.replaceChildren(loading);
+
+    void import("./public-issuer.js")
+      .then(({ mountPublicCreatorPaidIssuer }) => {
+        if (
+          generation !== issuerGeneration ||
+          controller.signal.aborted ||
+          pageSignal.aborted
+        ) {
+          return;
+        }
+        mountPublicCreatorPaidIssuer({
+          host: issuerHost,
+          request: payload,
+          signal: controller.signal,
+        });
+      })
+      .catch((error: unknown) => {
+        if (generation !== issuerGeneration || controller.signal.aborted) return;
+        const failure = createElement("section", { className: "error-card" });
+        failure.append(
+          createElement("h2", { text: "The Devnet issuer could not load." }),
+          createElement("p", {
+            text: userErrorMessage(error, "Reload this page and try again."),
+          }),
+        );
+        issuerHost.replaceChildren(failure);
+      });
+  };
+
   content.append(
     privacyNotice(),
     fragmentDisclosure(),
     ...requestPanels(payload),
-    localFileCheck(payload.commitment.mediaSha256, pageSignal),
+    localFileCheck(
+      payload.commitment.mediaSha256,
+      pageSignal,
+      handleMatchChange,
+    ),
+    issuerHost,
   );
-
-  const disabled = createElement("section", { className: "boundary-card" });
-  disabled.append(
-    createElement("span", { className: "status-badge", text: "Not connected" }),
-    createElement("h2", { text: "Wallet issuance comes next" }),
-    createElement("p", {
-      text: "This issue page does not show the wallet readiness panel, request a signature, pay a fee, or write to Solana. Nothing will happen merely because this link was opened.",
-    }),
-  );
-  content.append(disabled);
 }
 
 function renderVerify(

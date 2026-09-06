@@ -42,12 +42,20 @@ bounded URL fragments. Its 6,000-byte payload cap is independent of the general
 - makes no Solana request on link open, then offers a separately disclosed,
   explicit-click live check against the fixed public Devnet RPC.
 
-The ordinary public browser slice includes an optional Wallet Standard
-discovery and connection-only readiness check. It has no wallet-signing call,
-upload, analytics, server API, or issuance path. Its only RPC path is the
-explicit read-only verification action on a real receipt; media bytes,
-filenames, and local paths never enter that request. Deterministic home-page
-examples are synthetic UI fixtures and are never sent to RPC as chain evidence.
+The public browser slice includes both a read-only verifier and a creator-paid
+Devnet issuer. It has no upload, analytics, application-server API, embedded
+private key, or gas sponsor. Its fixed RPC paths are the explicit read-only
+verification action and the separately reviewed preparation, send, and status
+operations for issuance; media bytes, filenames, and local paths never enter
+those requests. Deterministic home-page examples are synthetic UI fixtures and
+are never sent to RPC as chain evidence.
+
+A public `#issue/v1` page is inert on open. It first hashes a user-selected file
+locally and requires an exact match with the request commitment. Wallet
+connection, transaction preparation, review, and signing are distinct explicit
+actions. Preparing displays the fixed public accounts, commitment, expiry, and
+creator cost without signing or sending. The final action asks Phantom to sign
+only after that review.
 
 A separate entry point, used only by `npm run dev:devnet`, provides the guided
 local Devnet test harness. It is pinned to `127.0.0.1:4173`, remains inert until
@@ -64,11 +72,12 @@ The repository owner must enable Pages with **GitHub Actions** as its source
 before the first deployment; the least-privilege branch workflow does not
 self-enable repository Pages settings.
 The Pages artifact is limited to `dist/web`: the static browser application and
-its assets. It does not publish the loopback Devnet harness, wallet-signing
-flow, sponsor service, private keys or other secrets, or any media-upload
-endpoint. The public build can discover a compatible wallet for the optional
-connection-only readiness check, but it cannot request a wallet signature or
-send a transaction.
+its assets. It does not publish the loopback Devnet harness, sponsor service,
+private keys or other secrets, or any media-upload endpoint. The public build
+can discover a compatible wallet and run the explicit creator-paid issuer. The
+wallet extension retains the creator key; the static application receives only
+the signed transaction bytes needed for exact validation and immediate Devnet
+broadcast and does not persist those bytes.
 
 Shareable receipt data is transported after `#verify/v1/`. The URL fragment is
 not included in the HTTP request sent to GitHub Pages, so GitHub does not need
@@ -86,6 +95,78 @@ to the default branch after review; that transition is not implied by the
 prototype. The repository-scoped Pages address is the canonical sprint URL,
 while a custom domain remains an optional later hosting choice and does not
 alter the fragment or receipt formats.
+
+## Hosted creator-paid issuance boundary
+
+The Week 2 hosted issuer avoids a browser-shipped sponsor secret and avoids
+depending on an application server. After the exact-byte gate, its deliberate
+sequence is:
+
+1. connect a compatible Wallet Standard account on Devnet;
+2. prepare one fixed legacy transaction using a recent blockhash and pinned
+   SAS/compute-budget instructions;
+3. review the public commitment, proof-scoped account addresses, expiry, three
+   rent-bearing account creations, and creator-paid Devnet SOL cost; and
+4. explicitly ask the wallet to sign, validate the exact returned wire, derive
+   its embedded transaction signature and SHA-256 digest, and send that exact
+   wire to the fixed Devnet RPC with the prepared `minContextSlot`.
+
+The transaction creates a new proof-scoped SAS credential, schema, and
+attestation atomically. The creator is fee payer, credential authority,
+authorized signer, and attestation signer. The browser supplies only no-op
+signer metadata while constructing instructions; Phantom owns the private key
+and supplies the actual signature. No media bytes, filename, local path, wallet
+metadata, seed, private key, or arbitrary transaction target enters storage or
+the network request.
+
+One transaction means one finalized signature is the honest creation reference
+for all three accounts in the existing v1 receipt. Once finality and the fetched
+SAS accounts are validated, receipt assembly uses that signature for the
+credential, schema, and attestation transaction fields. The receipt still
+represents a wallet assertion about exact bytes, not copyright or identity
+proof.
+
+Immediately before the external send boundary, the issuer adds a record to a
+bounded, versioned, canonical same-origin recovery store. It contains at most
+eight public status records keyed by canonical request ID/hash binding. Each
+record contains the creator, proof-scoped public accounts and credential name,
+signature derived from the signed wire, signed-wire digest, blockhash
+lifetime/`minContextSlot`, public expiry, and creation time. It contains no raw
+wire and therefore cannot sign, send, resubmit, or rebroadcast.
+
+Every recovery-store read, write, update, and clear is serialized with the
+browser Web Locks API. If that coordination primitive or safe access to the
+same-origin store is unavailable, the issuer fails closed before sending.
+Clearing is per-record compare-and-clear: it removes only the exact record that
+still matches the caller's observed binding and transaction facts, never a
+newer replacement from another tab. Retry clearing additionally requires the
+fixed RPC to report the saved recent blockhash invalid at finalized commitment,
+then report all three intended accounts absent from a finalized account read
+whose `minContextSlot` is the blockhash-validity response context.
+
+Reload recovery queries status for the derived embedded signature. After
+finality it reconstructs the deterministic plan, fetches the finalized signed
+transaction bytes from the fixed RPC, matches their saved SHA-256 digest, and
+runs the same exact-wire and creator-signature validator before receipt
+assembly. An unresolved record is never discarded
+solely because wall-clock time passed; when the eight-record bound cannot be
+satisfied safely, new issuance fails closed rather than evicting unresolved
+evidence. Finalized records remain until explicit clear or a durable receipt
+handoff. Structurally corrupt, non-canonical, or internally mismatched store
+data is not acted upon.
+
+The recovery data is public but correlating: it links a canonical request to a
+creator wallet, SAS accounts, and transaction signature. Any script executing
+on the same origin, or any person with access to the browser profile, can read
+those correlations. Same-origin storage is a recovery boundary, not a privacy
+or secret-storage boundary.
+
+Proof-scoped credentials make the v1 creation evidence self-contained and
+avoid relying on unavailable historical creation signatures for reused SAS
+accounts. The tradeoff is three new rent-bearing accounts for every proof. A
+reusable creator credential/schema would reduce repeated rent but needs a
+durable history/indexing design or a future receipt contract that can represent
+pre-existing verified accounts without fabricating creation references.
 
 ## Solana attestation baseline
 

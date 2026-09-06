@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-09-06T18:34:36.176Z",
+  "network": "devnet",
+  "localMedia": {
+    "byteLength": 11009996,
+    "sha256": "4d14352586b4d83d9bd469092ae735dde413d1c05080ac948618dc9284e07d2b",
+    "match": true
+  },
+  "chain": {
+    "status": "valid",
+    "valid": true,
+    "checks": {
+      "devnetGenesis": true,
+      "credentialPda": true,
+      "schemaPda": true,
+      "attestationPda": true,
+      "sasProgramOwnership": true,
+      "sasAccountTypes": true,
+      "creatorRoleConsistency": true,
+      "credentialName": true,
+      "credentialAuthority": true,
+      "credentialAuthorizedSigner": true,
+      "schemaCredential": true,
+      "schemaName": true,
+      "schemaDescription": true,
+      "schemaVersion": true,
+      "schemaActive": true,
+      "schemaFieldNames": true,
+      "schemaLayout": true,
+      "attestationCredential": true,
+      "attestationSchema": true,
+      "attestationNonce": true,
+      "attestationSigner": true,
+      "attestationExpiryMatches": true,
+      "attestationNotExpired": true,
+      "attestationNotTokenized": true,
+      "receiptCommitment": true,
+      "supportingSignatureStatusesLength": true,
+      "credentialSupportingSignatureConfirmed": true,
+      "schemaSupportingSignatureConfirmed": true,
+      "attestationSupportingSignatureConfirmed": true
+    },
+    "decodedCommitment": {
+      "manifestSha256": "a4046710f147e047abe7af63131fe0855e935092c46af1747c91cce195c449b7",
+      "mediaSha256": "4d14352586b4d83d9bd469092ae735dde413d1c05080ac948618dc9284e07d2b",
+      "statementType": "creator_media_commitment_v1",
+      "version": 1
+    }
+  }
+}
