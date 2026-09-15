@@ -424,6 +424,78 @@ h2 {
   border-style: dashed;
 }
 
+.profile-editor > summary {
+  cursor: pointer;
+  color: #f0c39e;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.profile-editor form > .muted {
+  margin: 20px 0;
+  color: #b8aca1;
+  line-height: 1.6;
+}
+
+.profile-opt-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.profile-opt-in input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  accent-color: #dfa06c;
+}
+
+.profile-editor fieldset {
+  min-width: 0;
+  margin: 22px 0;
+  padding: 0;
+  border: 0;
+}
+
+.profile-editor legend {
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.profile-editor fieldset label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #d5c5b6;
+  font-size: 0.875rem;
+}
+
+.profile-editor input:not([type="checkbox"]) {
+  min-width: 0;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #72503a;
+  border-radius: 8px;
+  color: #f5efe8;
+  background: #0d0b0b;
+  font-size: 1rem;
+}
+
+.profile-editor :focus-visible,
+.creator-profile a:focus-visible {
+  outline: 2px solid #dfa06c;
+  outline-offset: 4px;
+}
+
+.profile-editor h3 { margin-top: 24px; }
+.profile-editor .wallet-actions .secondary-button { margin-top: 0; }
+.profile-editor button:disabled { opacity: 0.5; cursor: not-allowed; }
+.creator-name { margin: 16px 0; font-size: 1.5rem; font-weight: 700; overflow-wrap: anywhere; }
+.creator-links { display: grid; gap: 14px; margin-top: 20px; overflow-wrap: anywhere; }
+.profile-link-note { color: #b8aca1; margin: 18px 0 0; font-size: 0.875rem; line-height: 1.6; }
+
 .file-picker {
   display: flex;
   align-items: center;

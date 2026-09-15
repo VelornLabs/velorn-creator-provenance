@@ -1,4 +1,6 @@
 import "./styles.css";
+import { creatorProfilePanel } from "./creator-profile-panel.js";
+import { creatorProfileEditor } from "./creator-profile-editor.js";
 
 import { hashBlobSha256 } from "./browser-hash.js";
 import {
@@ -449,6 +451,7 @@ function commitmentPanel(
 function requestPanels(
   request: IssueFragmentV1,
   headingPrefix = "Request",
+  includeProfile = true,
 ): HTMLElement[] {
   const overview = dataPanel(
     `${headingPrefix} identity`,
@@ -504,44 +507,11 @@ function requestPanels(
     "A lifecycle declaration is immutable public data. Discovering later supersede or revoke declarations still requires an indexer.",
   );
 
-  const profile = manifest.profile;
-  let profilePanel: HTMLElement;
-  if (profile) {
-    profilePanel = dataPanel(
-      "Optional public creator profile",
-      [
-        definitionRow("Profile contract", profile.contract),
-        definitionRow("Profile version", String(profile.version)),
-        definitionRow("Display name", profile.displayName),
-        definitionRow(
-          "Portfolio URL",
-          profile.portfolioUrl ?? "Not included in this request",
-        ),
-        definitionRow(
-          "Hire URL",
-          profile.hireUrl ?? "Not included in this request",
-        ),
-      ],
-      "These are self-asserted public profile fields. They do not verify legal identity, ownership of a website, or authority to represent another person. Profile URLs are displayed as text in this preview.",
-    );
-  } else {
-    profilePanel = createElement("section", {
-      className: "panel profile-empty",
-    });
-    profilePanel.append(
-      createElement("h2", { text: "Optional public creator profile" }),
-      createElement("p", {
-        className: "muted",
-        text: "No creator profile fields are included in this canonical request.",
-      }),
-    );
-  }
-
   return [
     overview,
     manifestPanel,
     lifecyclePanel,
-    profilePanel,
+    ...(includeProfile ? [creatorProfilePanel(manifest.profile)] : []),
     commitmentPanel(request.commitment),
   ];
 }
@@ -951,6 +921,11 @@ function renderIssue(
   if (synthetic) content.append(offlineDemoNotice());
 
   const issuerHost = createElement("div", { className: "issuer-host" });
+  const requestHost = createElement("div");
+  requestHost.append(...requestPanels(payload));
+  const matchHost = createElement("div");
+  let profileEditor: HTMLDetailsElement | undefined;
+  let matchController: AbortController | undefined;
   let issuerController: AbortController | undefined;
   let issuerGeneration = 0;
   const showLockedIssuer = (): void => {
@@ -976,6 +951,8 @@ function renderIssue(
   showLockedIssuer();
 
   const handleMatchChange = (matches: boolean): void => {
+    // Once matched, profile editing is unavailable during wallet review/signing.
+    if (profileEditor) profileEditor.hidden = matches;
     issuerGeneration += 1;
     const generation = issuerGeneration;
     issuerController?.abort();
@@ -1032,17 +1009,30 @@ function renderIssue(
       });
   };
 
-  content.append(
-    privacyNotice(),
-    fragmentDisclosure(),
-    ...requestPanels(payload),
-    localFileCheck(
-      payload.commitment.mediaSha256,
-      pageSignal,
-      handleMatchChange,
-    ),
-    issuerHost,
-  );
+  const resetMatch = (editing: boolean): void => {
+    matchController?.abort();
+    handleMatchChange(false);
+    matchHost.hidden = editing;
+    issuerHost.hidden = editing;
+    requestHost.hidden = editing;
+    matchHost.replaceChildren();
+    if (editing || pageSignal.aborted) return;
+    matchController = new AbortController();
+    matchHost.append(localFileCheck(payload.commitment.mediaSha256, matchController.signal, handleMatchChange));
+  };
+  pageSignal.addEventListener("abort", () => matchController?.abort(), { once: true });
+  content.append(privacyNotice(), fragmentDisclosure());
+  if (!synthetic && payload.manifest.lifecycle.action === "issue") {
+    profileEditor = creatorProfileEditor(payload, pageSignal, resetMatch, (fragment) => {
+      // Abort stale hashing/issuer work immediately, before the hashchange event.
+      matchController?.abort();
+      issuerController?.abort();
+      window.location.hash = fragment;
+    });
+    content.append(profileEditor);
+  }
+  content.append(requestHost, matchHost, issuerHost);
+  resetMatch(false);
 }
 
 function renderVerify(
@@ -1065,14 +1055,18 @@ function renderVerify(
     : liveChainCheck(payload, pageSignal);
 
   content.append(
+    creatorProfilePanel(payload.request.manifest.profile, true),
+    dataPanel("Signing wallet", [
+      definitionRow("Wallet address", payload.chainReceipt.authorizedSigner),
+    ], "This address is claimed by the receipt until the live check passes. A wallet address is not a verified legal identity."),
+    localFileCheck(payload.request.commitment.mediaSha256, pageSignal),
     livePanel,
     dataPanel("Receipt envelope", [
       definitionRow("Receipt contract", payload.contract),
       definitionRow("Contract version", String(payload.version)),
     ]),
-    ...requestPanels(payload.request, "Receipt request"),
+    ...requestPanels(payload.request, "Receipt request", false),
     ...chainEvidencePanels(payload.chainReceipt),
-    localFileCheck(payload.request.commitment.mediaSha256, pageSignal),
   );
 }
 
