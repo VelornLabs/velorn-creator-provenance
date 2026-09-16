@@ -452,6 +452,7 @@ function requestPanels(
   request: IssueFragmentV1,
   headingPrefix = "Request",
   includeProfile = true,
+  receipt = false,
 ): HTMLElement[] {
   const overview = dataPanel(
     `${headingPrefix} identity`,
@@ -512,7 +513,9 @@ function requestPanels(
     manifestPanel,
     lifecyclePanel,
     ...(includeProfile ? [creatorProfilePanel(manifest.profile)] : []),
-    commitmentPanel(request.commitment),
+    commitmentPanel(request.commitment, "Public commitment", receipt
+      ? "These are the file and manifest fingerprints included in this receipt. Use the Devnet record check to compare them with the current on-chain record."
+      : undefined),
   ];
 }
 
@@ -622,7 +625,8 @@ function syntheticChainCheckPanel(): HTMLElement {
   const panel = createElement("section", { className: "panel chain-check-panel" });
   panel.append(
     createElement("span", { className: "status-badge", text: "Live check unavailable" }),
-    createElement("h2", { text: "Synthetic sample—no Solana request" }),
+    createElement("h2", { text: "Devnet record check" }),
+    createElement("div", { className: "hash-result neutral", text: "Unavailable — synthetic sample, not an on-chain proof." }),
     createElement("p", {
       className: "muted",
       text: "This built-in sample contains placeholder accounts and signatures, so the page will not contact an RPC endpoint for it. Open a receipt from a real confirmed proof to use live verification.",
@@ -638,10 +642,10 @@ function liveChainCheck(
   const panel = createElement("section", { className: "panel chain-check-panel" });
   panel.append(
     createElement("span", { className: "status-badge", text: "Optional live check" }),
-    createElement("h2", { text: "Check the current Solana Devnet record" }),
+    createElement("h2", { text: "Devnet record check" }),
     createElement("p", {
       className: "muted",
-      text: "Nothing is queried merely because this receipt link was opened. Only after you explicitly choose the live check does this page contact the fixed Solana Devnet RPC. That provider can see your IP address, this page's origin, and the already-public addresses and signatures being checked. Your media bytes, filename, and local path are never sent.",
+      text: "Compare this receipt with Solana’s test network. This is read-only: no wallet, signature, or payment needed.",
     }),
   );
 
@@ -662,7 +666,7 @@ function liveChainCheck(
   const result = createElement("div", { className: "hash-result neutral" });
   result.setAttribute("role", "status");
   result.setAttribute("aria-live", "polite");
-  result.textContent = "Live Devnet has not been checked.";
+  result.textContent = "Not checked — choose the live check below.";
   const checkDetails = createElement("details", {
     className: "chain-check-details",
   });
@@ -672,7 +676,18 @@ function liveChainCheck(
   const checks = createElement("ul", { className: "chain-check-list" });
   checkDetails.append(checkSummary, checks);
   checkDetails.hidden = true;
-  panel.append(actions, result, checkDetails);
+  const networkDetails = createElement("details", { className: "chain-check-details" });
+  networkDetails.append(
+    createElement("summary", { text: "What this network check shares" }),
+    createElement("p", {
+      className: "profile-link-note",
+      text: "Nothing is queried merely because this receipt link was opened. Only after you explicitly choose the live check does this page contact the fixed Solana Devnet RPC. That provider can see your IP address, this page's origin, and the already-public addresses and signatures being checked. Your media bytes, filename, and local path are never sent.",
+    }),
+  );
+  panel.append(result, actions, createElement("p", {
+    className: "profile-link-note",
+    text: "Only clicking the check contacts the Devnet provider. It receives your IP address and public receipt references, never your file.",
+  }), networkDetails, checkDetails);
 
   let activeController: AbortController | undefined;
   const cancelActive = (): void => {
@@ -683,6 +698,7 @@ function liveChainCheck(
   cancel.addEventListener("click", cancelActive);
 
   check.addEventListener("click", () => {
+    if (pageSignal.aborted) return;
     activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
@@ -754,7 +770,7 @@ function liveChainCheck(
 
   const limitation = createElement("p", { className: "chain-check-limitation" });
   limitation.textContent = "The account/PDA/schema/signer/payload checks are the substantive live proof. Transaction signatures are checked as successful supporting references; this prototype does not yet decode each historical transaction to prove which instruction created each account. Receipt time is service assembly time, not an on-chain timestamp. None of these checks establishes copyright by itself.";
-  panel.append(limitation);
+  networkDetails.append(limitation);
   return panel;
 }
 
@@ -774,13 +790,16 @@ function localFileCheck(
   expectedSha256: string,
   pageSignal: AbortSignal,
   onMatchChange?: (matches: boolean) => void,
+  receipt = false,
 ): HTMLElement {
   const panel = createElement("section", { className: "panel file-panel" });
   panel.append(
-    createElement("h2", { text: "Check media bytes locally" }),
+    createElement("h2", { text: receipt ? "File match" : "Check media bytes locally" }),
     createElement("p", {
       className: "muted",
-      text: "Choose a candidate file. Its bytes stay on this device and are read in small chunks.",
+      text: receipt
+        ? "Choose the original exported file to compare its digital fingerprint. It stays on your device and is never uploaded."
+        : "Choose a candidate file. Its bytes stay on this device and are read in small chunks.",
     }),
   );
 
@@ -805,7 +824,7 @@ function localFileCheck(
   const result = createElement("div", { className: "hash-result neutral" });
   result.setAttribute("role", "status");
   result.setAttribute("aria-live", "polite");
-  result.textContent = "No file selected.";
+  result.textContent = receipt ? "Not compared — no file selected." : "No file selected.";
 
   const cancel = createElement("button", {
     className: "secondary-button",
@@ -828,12 +847,14 @@ function localFileCheck(
 
   cancel.addEventListener("click", () => controller?.abort());
   input.addEventListener("change", () => {
+    if (pageSignal.aborted) return;
     controller?.abort();
+    controller = undefined;
     onMatchChange?.(false);
     const file = input.files?.item(0);
     if (!file) {
       result.className = "hash-result neutral";
-      result.textContent = "No file selected.";
+      result.textContent = receipt ? "Not compared — no file selected." : "No file selected.";
       progress.hidden = true;
       cancel.hidden = true;
       return;
@@ -889,7 +910,14 @@ function localFileCheck(
       });
   });
 
-  panel.append(picker, progress, cancel, result);
+  if (receipt) {
+    panel.append(result, picker, progress, cancel, createElement("p", {
+      className: "profile-link-note",
+      text: "This compares exact file bytes, not visual similarity. Editing, re-exporting, or platform compression can produce a different file. A match alone does not check the Devnet record.",
+    }));
+  } else {
+    panel.append(picker, progress, cancel, result);
+  }
   return panel;
 }
 
@@ -1040,34 +1068,59 @@ function renderVerify(
   payload: VerifyFragmentV1,
   pageSignal: AbortSignal,
 ): void {
+  content.classList.add("verifier-content");
   content.append(
     pageHeading(
-      "Verifier · local hash slice",
-      "Inspect the full receipt and check the exact media bytes.",
-      "This canonical receipt includes its full public request, any public creator profile, SAS accounts, and transaction evidence. You can compare local media bytes without a network request, or explicitly check the current Devnet record.",
+      "Check a receipt · Devnet preview",
+      "Check whether your file matches this receipt.",
+      "Two separate checks: compare a file on your device and check the public record on Solana Devnet, a test network. No wallet or payment is needed to verify.",
     ),
+    createElement("p", {
+      className: "verifier-boundary",
+      text: "Identity is not verified. These checks do not prove copyright, ownership, originality, or permission. Profile fields are the wallet holder’s own assertions.",
+    }),
   );
   if (isOfflineDemoRequest(payload.request)) content.append(offlineDemoNotice());
-  content.append(privacyNotice(), fragmentDisclosure());
 
   const livePanel = isOfflineDemoRequest(payload.request)
     ? syntheticChainCheckPanel()
     : liveChainCheck(payload, pageSignal);
 
-  content.append(
+  const checks = createElement("div", { className: "verification-checks" });
+  checks.append(
+    localFileCheck(payload.request.commitment.mediaSha256, pageSignal, undefined, true),
+    livePanel,
+  );
+  content.append(checks,
     creatorProfilePanel(payload.request.manifest.profile, true),
     dataPanel("Signing wallet", [
       definitionRow("Wallet address", payload.chainReceipt.authorizedSigner),
     ], "This address is claimed by the receipt until the live check passes. A wallet address is not a verified legal identity."),
-    localFileCheck(payload.request.commitment.mediaSha256, pageSignal),
-    livePanel,
+  );
+  const privacy = createElement("details", { className: "panel verifier-details" });
+  privacy.append(
+    createElement("summary", { text: "Privacy and sharing this link" }),
+    privacyNotice(), fragmentDisclosure(),
+  );
+  content.append(createElement("p", {
+    className: "profile-link-note",
+    text: "Sharing this link shares its public profile and receipt fields, not your media. The link is readable, not encrypted, and may remain in browser history.",
+  }), privacy);
+  const evidence = createElement("details", { className: "panel verifier-details" });
+  evidence.append(
+    createElement("summary", { text: "Technical evidence — hashes, accounts, and transactions" }),
+    createElement("p", {
+      className: "profile-link-note",
+      text: "These are the values carried by the receipt link, not a live verification result. Later replacement or revocation declarations are not automatically discovered by this prototype.",
+    }),
     dataPanel("Receipt envelope", [
       definitionRow("Receipt contract", payload.contract),
       definitionRow("Contract version", String(payload.version)),
     ]),
-    ...requestPanels(payload.request, "Receipt request", false),
+    ...requestPanels(payload.request, "Receipt request", false, true),
     ...chainEvidencePanels(payload.chainReceipt),
   );
+  content.append(evidence);
 }
 
 function renderError(content: HTMLElement, error: unknown): void {

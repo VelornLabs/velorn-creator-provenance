@@ -53,9 +53,37 @@ verifier used for this check was build `d3cd3b3a`, before the Week 3 presentatio
 update. No new transaction is necessary to display this receipt in the updated
 interface. Profile assertions are not independently verified legal identities.
 
-Next: publish the validated interface with maintainer approval, check the hosted
-receipt presentation, then collect actual creator feedback. Do not describe local
-structural receipt fixtures as live on-chain profile evidence.
+The updated creator-profile interface was published as `0c80e2ee` on September
+15. The hosted profile-bearing receipt subsequently passed a fresh read-only
+Devnet check (29/29) by the agent. No further issuance was required.
+
+### Clarity update — September 16, 2026
+
+Five AI-assisted heuristic reviews identified presentation issues; these are not
+human user feedback, customer validation, or a security/accessibility audit.
+Real creator feedback is still pending.
+
+- The verifier now leads with plain-language instructions and separate File
+  match / Devnet record check controls. Both start neutral and require action;
+  neither check implies the other passed.
+- Wallet/payment requirements, test-network context, local-file privacy, and
+  identity/copyright limits remain visible. Longer disclosures and technical
+  evidence are expandable rather than removed.
+- Receipt commitment wording no longer describes an already-issued receipt as
+  an unissued request. Issue-route wording and issuance behavior are preserved.
+- A cleared file selection invalidates pending hash results; checks do not start
+  after page exit. Tests cover success, mismatch, stale work, retries, unavailable
+  RPC, cancellation, and independent statuses.
+
+Validation before publication: 334 tests, core build, web build, and diff checks
+passed. Browser testing used the existing September 15 profile-bearing receipt:
+the original MP4 matched locally, a different fixture did not match, and the live
+Devnet check passed 29/29 independently. Expanding technical evidence retained
+the original hashes. No new transaction, wallet approval, or media upload occurred.
+
+Next: publish this clarity update, then record Week 3 and continue gathering real
+creator feedback. Do not describe local structural fixtures as live chain proof,
+or the five AI reviews as five users.
 
 The isolated Velorn export integration already produces the canonical issue
 request. Week 2 adds creator-paid browser issuance and receipt recovery. The

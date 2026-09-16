@@ -714,6 +714,27 @@ h2 {
   font-size: 12px;
 }
 
+/* The verifier is a working surface: checks first, evidence on demand. */
+.verifier-content { padding-top: 32px; }
+.verifier-content .page-heading { margin-bottom: 18px; }
+.verifier-content .page-heading h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; margin-bottom: 14px; }
+.verifier-content .hero-copy { font-size: 1rem; line-height: 1.5; }
+.verifier-content .eyebrow { font-size: 0.75rem; margin-bottom: 12px; }
+.verifier-boundary { color: #c6aa93; font-size: 0.875rem; line-height: 1.5; margin-bottom: 0; }
+.verification-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.verification-checks > .panel { min-width: 0; padding: 22px; }
+.verification-checks .status-badge { display: none; }
+.verification-checks .file-picker { flex-wrap: wrap; gap: 8px; padding: 13px; margin-top: 20px; }
+.verification-checks .file-picker-copy,
+.verification-checks .profile-link-note,
+.verification-checks .chain-check-limitation { font-size: 0.875rem; }
+.verification-checks .hash-result { color: #d1c6bb; }
+.verification-checks .hash-result.match { color: #c8e5c3; }
+.verification-checks .hash-result.mismatch { color: #efb7ad; }
+.verifier-details > summary { cursor: pointer; font-weight: 700; color: #f0c39e; line-height: 1.5; }
+.verifier-details .panel { box-shadow: none; }
+.verifier-content :focus-visible { outline: 2px solid #dfa06c; outline-offset: 4px; }
+
 @media (max-width: 700px) {
   .shell {
     width: min(100% - 24px, 1120px);
@@ -735,6 +756,10 @@ h2 {
   .route-grid {
     grid-template-columns: 1fr;
   }
+
+  .verifier-content { padding-top: 24px; }
+  .verification-checks { grid-template-columns: 1fr; gap: 0; }
+  .verifier-details { padding: 20px; }
 
   .definition-row {
     grid-template-columns: 1fr;
